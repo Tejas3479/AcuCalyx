@@ -11,6 +11,7 @@ Implements Step 16 of AcuCalyx v2.1:
 - Cryptographic SHA-256 case provenance tracking
 """
 
+from collections import OrderedDict
 from datetime import datetime, timezone
 import io
 import json
@@ -28,6 +29,7 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from acucalyx.audit.provenance import compute_sha256_file
+from acucalyx.cybersecurity.phi_guard import PHIGuard
 from acucalyx.pipeline import run_planning_pipeline, PlanningPipelineResult
 from acucalyx.geometry.transforms import LineSegment3D
 from tests.phantom.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
@@ -74,8 +76,28 @@ async def add_no_cache_headers(request, call_next):
     return response
 
 
-# In-memory case cache for active volumes
-_ACTIVE_VOLUMES: Dict[str, Dict[str, Any]] = {}
+# In-memory bounded LRU cache for active volumes (max 3 cases to prevent OOM)
+MAX_CACHED_VOLUMES = 3
+_ACTIVE_VOLUMES: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+
+
+def get_cached_volume(case_id: str) -> Optional[Dict[str, Any]]:
+    """Retrieves volume from cache and updates LRU recency position."""
+    if case_id in _ACTIVE_VOLUMES:
+        _ACTIVE_VOLUMES.move_to_end(case_id)
+        return _ACTIVE_VOLUMES[case_id]
+    return None
+
+
+def set_cached_volume(case_id: str, vol: np.ndarray, spatial: Any) -> None:
+    """Stores volume in LRU cache, evicting the least recently accessed case if limit exceeded."""
+    if case_id in _ACTIVE_VOLUMES:
+        _ACTIVE_VOLUMES.move_to_end(case_id)
+    else:
+        if len(_ACTIVE_VOLUMES) >= MAX_CACHED_VOLUMES:
+            evicted_id, _ = _ACTIVE_VOLUMES.popitem(last=False)
+            logger.info(f"LRU Cache Eviction: Cleared volume memory for case {evicted_id}")
+    _ACTIVE_VOLUMES[case_id] = {"volume": vol, "spatial": spatial}
 
 
 def get_case_meta_path(case_id: str) -> Path:
@@ -239,6 +261,33 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
         dcm_files = [p for p in extract_dir.rglob("*") if p.is_file() and not p.name.startswith(".")]
         input_file_count = len(dcm_files)
         input_path = extract_dir
+
+        # HIPAA / PS 3.15 Basic Application Level Confidentiality Profile Guard
+        phi_guard = PHIGuard()
+        scrubbed_count = 0
+        for dcm_file in dcm_files:
+            try:
+                import pydicom
+                ds = pydicom.dcmread(str(dcm_file), force=True)
+                if hasattr(ds, "PatientName") or hasattr(ds, "PatientID") or hasattr(ds, "InstitutionName"):
+                    scrubbed = phi_guard.deidentify(ds)
+                    scrubbed.save_as(str(dcm_file))
+                    scrubbed_count += 1
+            except Exception as e:
+                logger.debug(f"Skip during de-identification of {dcm_file}: {e}")
+        if scrubbed_count > 0:
+            logger.info(f"PHIGuard: Successfully scrubbed direct PHI from {scrubbed_count} slices for case {case_id}")
+            log_case_audit_event(case_id, "PHI_SCRUBBED_INGESTION", {"scrubbed_slices": scrubbed_count})
+    elif filename.lower().endswith(".dcm"):
+        try:
+            import pydicom
+            phi_guard = PHIGuard()
+            ds = pydicom.dcmread(str(dest_path), force=True)
+            scrubbed = phi_guard.deidentify(ds)
+            scrubbed.save_as(str(dest_path))
+            log_case_audit_event(case_id, "PHI_SCRUBBED_INGESTION", {"scrubbed_slices": 1})
+        except Exception as e:
+            logger.debug(f"Single DICOM de-identification skipped: {e}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
@@ -488,19 +537,27 @@ def get_case_mesh(case_id: str, mesh_name: str):
     # Clean filename
     clean_name = mesh_name if mesh_name.endswith(".glb") else f"{mesh_name}.glb"
     mesh_path = case_dir / "artifacts" / "meshes" / clean_name
+    is_synthetic_template = False
 
     if not mesh_path.is_file():
         preview_mesh = BASE_DIR / "data" / "anatomical_preview" / clean_name
         if preview_mesh.is_file():
             mesh_path = preview_mesh
+            is_synthetic_template = True
         else:
             raise HTTPException(status_code=404, detail=f"3D Mesh '{clean_name}' not found for case {case_id}")
+
+    headers = {
+        "X-AcuCalyx-Intended-Use": "Display and Rehearsal Only. Non-Sterile.",
+        "X-AcuCalyx-Synthetic-Template": "true" if is_synthetic_template else "false",
+        "X-AcuCalyx-Anatomical-Source": "Standard Anatomical Reference Template (Non-Patient-Specific)" if is_synthetic_template else "Patient Specific Segmentation"
+    }
 
     return FileResponse(
         path=mesh_path,
         media_type="model/gltf-binary",
         filename=clean_name,
-        headers={"X-AcuCalyx-Intended-Use": "Display and Rehearsal Only. Non-Sterile."}
+        headers=headers
     )
 
 
@@ -536,8 +593,8 @@ def get_mpr_slice(
     meta = load_case_meta(case_id)
     input_path = Path(meta["input_path"])
 
-    # Load volume if not in cache
-    if case_id not in _ACTIVE_VOLUMES:
+    cached = get_cached_volume(case_id)
+    if cached is None:
         if input_path.is_dir():
             from acucalyx.ingestion.dicom import load_dicom_series
             res = load_dicom_series(input_path)
@@ -548,10 +605,10 @@ def get_mpr_slice(
             res = load_research_nifti(input_path)
             vol = res.volume_hu
             spatial = res.spatial_orientation
-        _ACTIVE_VOLUMES[case_id] = {"volume": vol, "spatial": spatial}
+        set_cached_volume(case_id, vol, spatial)
     else:
-        vol = _ACTIVE_VOLUMES[case_id]["volume"]
-        spatial = _ACTIVE_VOLUMES[case_id]["spatial"]
+        vol = cached["volume"]
+        spatial = cached["spatial"]
 
     rows, cols, slices = vol.shape
 
@@ -646,17 +703,20 @@ def convert_lps_to_mpr_slice(
     meta = load_case_meta(case_id)
     input_path = Path(meta["input_path"])
 
-    if case_id not in _ACTIVE_VOLUMES:
+    cached = get_cached_volume(case_id)
+    if cached is None:
         if input_path.is_dir():
             from acucalyx.ingestion.dicom import load_dicom_series
             res = load_dicom_series(input_path)
         else:
             from acucalyx.ingestion.nifti import load_research_nifti
             res = load_research_nifti(input_path)
-        _ACTIVE_VOLUMES[case_id] = {"volume": res.volume_hu, "spatial": res.spatial_orientation}
-
-    vol = _ACTIVE_VOLUMES[case_id]["volume"]
-    spatial = _ACTIVE_VOLUMES[case_id]["spatial"]
+        set_cached_volume(case_id, res.volume_hu, res.spatial_orientation)
+        vol = res.volume_hu
+        spatial = res.spatial_orientation
+    else:
+        vol = cached["volume"]
+        spatial = cached["spatial"]
 
     rows, cols, slices = vol.shape
     p_lps = np.array([x, y, z], dtype=np.float64)
