@@ -1,0 +1,1844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AcuCalyx™ — Clinical Decision Support for PCNL</title>
+  <link rel="stylesheet" href="style.css?v=20261002_05">
+  
+  <!-- Three.js and Loaders -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <style>
+    /* Full Viewport 3D Canvas Layout */
+    .viewport-center {
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      background-color: var(--viewport-bg, #eef2f6) !important;
+      position: relative !important;
+      overflow: hidden !important;
+      height: calc(100vh - 100px) !important;
+    }
+    .three-viewport {
+      flex: 1 !important;
+      height: 100% !important;
+      width: 100% !important;
+      position: relative !important;
+      overflow: hidden !important;
+      background: var(--viewport-gradient, radial-gradient(circle at center, #ffffff 0%, #e2e8f0 100%)) !important;
+    }
+    .three-viewport canvas {
+      width: 100% !important;
+      height: 100% !important;
+      display: block !important;
+    }
+    .viewport-overlay-tools {
+      position: absolute !important;
+      top: 12px !important;
+      left: 12px !important;
+      display: flex !important;
+      gap: 8px !important;
+      z-index: 25 !important;
+      flex-wrap: wrap !important;
+    }
+    .mpr-viewport {
+      display: none;
+      height: 260px;
+      flex-shrink: 0;
+      background-color: #0b0e14;
+      border-top: 2px solid var(--border-color);
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Mandatory FDA CDS Disclaimer Banner -->
+  <div class="cds-disclaimer-banner">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      <line x1="12" y1="9" x2="12" y2="13"/>
+      <line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    PREOPERATIVE PLANNING & CLINICAL DECISION SUPPORT ONLY — NOT FOR DIRECT SURGICAL GUIDANCE. 3D MODELS ARE NON-STERILE DISPLAY OBJECTS.
+  </div>
+
+  <!-- Header -->
+  <header class="app-header">
+    <div class="logo-section">
+      <div class="logo-badge">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10" stroke="#00d2ff"/>
+          <path d="M12 6v6l4 2" stroke="#00e5a3"/>
+          <circle cx="12" cy="12" r="3" fill="#00d2ff"/>
+        </svg>
+        Acu<span>Calyx</span>™
+      </div>
+    </div>
+
+    <div class="case-controls">
+      <label style="color: var(--text-secondary); font-size: 11px;">Active Case:</label>
+      <select id="case-select" class="case-select">
+        <option value="">Loading cases...</option>
+      </select>
+      <button id="btn-new-demo" class="btn" title="Generate analytical CT calibration phantom">
+        + Synthetic Demo
+      </button>
+      <input type="file" id="file-upload" style="display: none;" accept=".zip,.nii,.nii.gz">
+      <button id="btn-upload" class="btn" onclick="document.getElementById('file-upload').click()">
+        Upload CT
+      </button>
+      <div id="case-state-badge" class="state-badge state-ready">READY</div>
+      <div style="display: flex; align-items: center; gap: 6px; margin-left: 8px;">
+        <label style="color: var(--text-secondary); font-size: 11px; font-weight: 600;">Theme:</label>
+        <select id="theme-select" class="theme-select" onchange="applyAppTheme(this.value)">
+          <option value="hybrid" selected>🏥 Hybrid Clinical</option>
+          <option value="light">☀️ Clinical Light</option>
+          <option value="dark">🌙 Surgical Dark</option>
+        </select>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 8px;">
+      <button id="btn-run-plan" class="btn btn-primary">
+        ⚡ Run Planning Pipeline
+      </button>
+      <button id="btn-download-pdf" class="btn" title="Download Auditable PDF Report">
+        📄 Preop Report
+      </button>
+      <button id="btn-provenance" class="btn" title="View Cryptographic SHA-256 Provenance">
+        🔒 Audit
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Cockpit Layout -->
+  <div class="cockpit-container">
+
+    <!-- Left Sidebar: Controls & Metrics -->
+    <aside class="sidebar-left">
+      <!-- Case Meta -->
+      <div class="panel-section">
+        <div class="section-title">
+          <span>Acquisition & Geometry</span>
+          <span id="target-side-label" style="color: var(--accent-cyan);">LEFT KIDNEY</span>
+        </div>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Modality</div>
+            <div id="info-modality" class="info-val">CT Helical</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Slice Thickness</div>
+            <div id="info-thickness" class="info-val">1.00 mm</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">IPP Spacing</div>
+            <div id="info-spacing" class="info-val">1.00 mm</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Quality Gate</div>
+            <div id="info-quality-status" class="info-val" style="color: var(--accent-teal);">PASSED</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Calculus Burden -->
+      <div class="panel-section">
+        <div class="section-title">Calculus Burden Analysis</div>
+        <div class="info-grid">
+          <div class="info-item">
+            <div class="info-label">Stones Count</div>
+            <div id="info-stone-count" class="info-val">0</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Total Volume</div>
+            <div id="info-stone-vol" class="info-val">0 mm³</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Max Feret Diam.</div>
+            <div id="info-stone-feret" class="info-val">0 mm</div>
+          </div>
+          <div class="info-item">
+            <div class="info-label">Peak Attenuation</div>
+            <div id="info-stone-hu" class="info-val">0 HU</div>
+          </div>
+        </div>
+        <div style="margin-top: 8px; font-size: 11px; color: var(--text-secondary);">
+          Composition: <span id="info-composition" style="color: var(--text-primary);">Not validated / unavailable</span>
+        </div>
+
+        <!-- Milestone M11: Descriptive Clinical Nephrolithometry Assessment -->
+        <div style="margin-top: 10px; background-color: var(--bg-surface-elevated); padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border-color); font-size: 11px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="color: var(--text-secondary); font-weight: 600;">Guy's Complexity:</span>
+            <strong id="info-guys-grade" style="color: var(--accent-cyan); font-variant-numeric: tabular-nums;">GRADE I</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="color: var(--text-secondary); font-weight: 600;">S.T.O.N.E. Score:</span>
+            <strong id="info-stone-score" style="color: var(--accent-teal); font-variant-numeric: tabular-nums;">-- / 13</strong>
+          </div>
+          <div style="font-size: 10px; color: var(--text-muted); line-height: 1.2; margin-top: 4px;">
+            Descriptive clinical metrics per Thomas et al. & Okhunov et al. Non-prescriptive CDS.
+          </div>
+        </div>
+      </div>
+
+      <!-- PCS Visibility Gate -->
+      <div class="panel-section">
+        <div class="section-title">Pelvicalyceal System (PCS)</div>
+        <div style="background-color: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-secondary);">Visibility State:</span>
+            <span id="pcs-state-badge" class="state-badge state-ready" style="font-size: 10px;">ANATOMICALLY_ESTIMATED</span>
+          </div>
+          <p id="pcs-notice-text" style="font-size: 11px; color: var(--text-secondary); margin-top: 8px; line-height: 1.3;">
+            Calyx entry zones synthesized from posterior infundibular prior corridors. Non-contrast scan.
+          </p>
+        </div>
+      </div>
+
+      <!-- 3D Anatomical Layer Controls -->
+      <div class="panel-section">
+        <div class="section-title">3D Anatomy Layers & Opacity</div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-kidney" checked>
+            <span class="color-dot" style="background-color: #be505f;"></span>
+            Renal Cortex (Cutaway)
+          </label>
+          <input type="range" id="opacity-kidney" min="0" max="1" step="0.05" value="0.35" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-capsule" checked>
+            <span class="color-dot" style="background-color: #78281f;"></span>
+            Renal Capsule (Covering)
+          </label>
+          <input type="range" id="opacity-capsule" min="0" max="1" step="0.05" value="0.65" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-pyramids" checked>
+            <span class="color-dot" style="background-color: #881337;"></span>
+            Medullary Pyramids
+          </label>
+          <input type="range" id="opacity-pyramids" min="0" max="1" step="0.05" value="0.85" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-collecting" checked>
+            <span class="color-dot" style="background-color: #d6bc97;"></span>
+            Calyces & Pelvis
+          </label>
+          <input type="range" id="opacity-collecting" min="0" max="1" step="0.05" value="0.90" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-arteries" checked>
+            <span class="color-dot" style="background-color: #ef4444;"></span>
+            Renal Arteries
+          </label>
+          <input type="range" id="opacity-arteries" min="0" max="1" step="0.05" value="0.85" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-veins" checked>
+            <span class="color-dot" style="background-color: #3b82f6;"></span>
+            Renal Veins
+          </label>
+          <input type="range" id="opacity-veins" min="0" max="1" step="0.05" value="0.80" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-nerves" checked>
+            <span class="color-dot" style="background-color: #eab308;"></span>
+            Renal Nerve Plexus
+          </label>
+          <input type="range" id="opacity-nerves" min="0" max="1" step="0.05" value="0.95" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-nephrons" checked>
+            <span class="color-dot" style="background-color: #f59e0b;"></span>
+            Nephron Functional Unit
+          </label>
+          <input type="range" id="opacity-nephrons" min="0" max="1" step="0.05" value="0.85" style="width: 70px;">
+        </div>
+
+        <div class="layer-row" style="background: rgba(245, 158, 11, 0.12); border-radius: 4px; padding: 2px 4px;">
+          <label class="layer-label" style="font-weight: 700; color: #fbbf24;">
+            <input type="checkbox" id="layer-stones" checked>
+            <span class="color-dot" style="background-color: #fbbf24; box-shadow: 0 0 8px #f59e0b;"></span>
+            Target Calculus (Stone)
+          </label>
+          <input type="range" id="opacity-stones" min="0" max="1" step="0.05" value="1.0" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-colon">
+            <span class="color-dot" style="background-color: #f97316;"></span>
+            Colon Hazard Buffer
+          </label>
+          <input type="range" id="opacity-colon" min="0" max="1" step="0.05" value="0.30" style="width: 70px;">
+        </div>
+
+        <div class="layer-row">
+          <label class="layer-label">
+            <input type="checkbox" id="layer-ribs">
+            <span class="color-dot" style="background-color: #f1f5f9;"></span>
+            Ribs (11th & 12th)
+          </label>
+          <input type="range" id="opacity-ribs" min="0" max="1" step="0.05" value="0.65" style="width: 70px;">
+        </div>
+      </div>
+
+      <!-- Anatomical Atlas Color Key (in sidebar where it is clean and legible) -->
+      <div class="panel-section" style="margin-top: 10px;">
+        <div class="section-title">🎨 Anatomical Atlas Key</div>
+        <div style="display: flex; flex-direction: column; gap: 4px; font-size: 11px; padding: 4px 0;">
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#ef4444;"></span> Renal Arteries (Oxygenated)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#2563eb;"></span> Renal Veins (Deoxygenated)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#facc15;"></span> Renal Nerves (Sympathetic)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#d6bc97;"></span> Calyces & Pelvis (Mucosal Cream)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#f59e0b;"></span> Nephron Functional Unit</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#c47e85;"></span> Renal Cortex / Columns</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#881337;"></span> Medullary Pyramids</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#6e241c;"></span> Renal Capsule (Outer)</div>
+          <div style="display:flex; align-items:center; gap:8px; background: rgba(251, 191, 36, 0.15); border: 1px solid #f59e0b; border-radius: 4px; padding: 4px 6px; margin-top: 2px;">
+            <span class="color-dot" style="background:#ffffff; border: 1px solid #fbbf24; box-shadow: 0 0 8px #f59e0b;"></span>
+            <strong style="color: #fbbf24;">Target Calculus (Faceted Ivory & Gold)</strong>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Center Viewports: 3D Scene + 2D MPR -->
+    <main class="viewport-center">
+      <!-- 3D Viewport (Full Center Stage) -->
+      <div id="three-container" class="three-viewport">
+        <!-- Floating Camera & Anatomical Tools Toolbar -->
+        <div class="viewport-overlay-tools">
+          <button class="tool-btn" onclick="viewer3d.setCameraView('posterior')">👁️ Coronal En-Face (PCNL)</button>
+          <button class="tool-btn" onclick="viewer3d.setCameraView('lateral')">📐 Lateral Profile</button>
+          <button class="tool-btn" onclick="viewer3d.setCameraView('bullseye')">🎯 Bull's-eye</button>
+          <button class="tool-btn" onclick="viewer3d.setCameraView('progression')">📏 Progression</button>
+          <button class="tool-btn" onclick="openNephronMagnifier()" style="color: #38bdf8; border-color: rgba(56,189,248,0.4);">🔬 Micro-Nephron 3D</button>
+          <button class="tool-btn" onclick="viewer3d.focusOnStone()" style="color: #fbbf24; border-color: rgba(245,158,11,0.5); font-weight: 700;">💎 Focus Stone</button>
+          <button class="tool-btn" id="btn-toggle-mpr" onclick="toggleMPRView()" style="color: #a78bfa; border-color: rgba(167,139,250,0.4);">🔲 2D CT Slice</button>
+        </div>
+
+        <!-- Bottom-Left Anatomical Orientation Indicator -->
+        <div style="position: absolute; bottom: 14px; left: 14px; z-index: 20; background: rgba(10, 15, 26, 0.88); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 12px; pointer-events: none; font-size: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          <div style="font-weight: 700; color: var(--accent-cyan); text-align: center; margin-bottom: 2px;">AXIS (LPS)</div>
+          <div style="text-align: center; color: #cbd5e1; font-weight: 600;">▲ Superior (Pole)</div>
+          <div style="display: flex; gap: 8px; justify-content: center; align-items: center; margin: 2px 0;">
+            <span style="color: #cbd5e1; font-weight: 600;">◀ Medial (Hilum)</span>
+            <span style="width: 6px; height: 6px; background: var(--accent-cyan); border-radius: 50%; box-shadow: 0 0 6px var(--accent-cyan);"></span>
+            <span style="color: #cbd5e1; font-weight: 600;">Lateral (Side) ▶</span>
+          </div>
+          <div style="text-align: center; color: #cbd5e1; font-weight: 600;">▼ Inferior (Pole)</div>
+        </div>
+      </div>
+
+      <!-- 2D MPR Viewport (Collapsible Drawer) -->
+      <div id="mpr-viewport" class="mpr-viewport">
+        <div class="mpr-header">
+          <div class="mpr-tabs">
+            <button class="tab-btn active" data-orient="AXIAL">Axial (Transverse)</button>
+            <button class="tab-btn" data-orient="CORONAL">Coronal</button>
+            <button class="tab-btn" data-orient="SAGITTAL">Sagittal</button>
+          </div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="font-size: 11px; color: var(--text-secondary);">W/L:</span>
+            <button class="tab-btn" data-preset="soft">Soft (400/40)</button>
+            <button class="tab-btn" data-preset="bone">Bone (2000/500)</button>
+            <button class="tab-btn" data-preset="kidney">Kidney (300/50)</button>
+          </div>
+        </div>
+
+        <div class="mpr-body">
+          <img id="mpr-slice-img" alt="2D CT Slice" src="">
+        </div>
+
+        <div class="mpr-controls-bar">
+          <span id="mpr-slice-label" style="min-width: 220px; font-weight: 600;">AXIAL Slice 40 / 80</span>
+          <div class="slider-group">
+            <label style="color: var(--text-secondary);">Slice:</label>
+            <input type="range" id="mpr-slider" min="0" max="79" value="40">
+          </div>
+          <span style="color: var(--accent-teal); font-size: 11px;">🟢 Green Ring = Needle Path Trajectory Intercept</span>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Sidebar: Pareto Decision Matrix -->
+    <aside class="sidebar-right">
+      <div class="panel-section">
+        <div class="section-title">
+          <span>Pareto Access Candidates</span>
+          <span id="candidates-count-badge" class="version-pill">0 Available</span>
+        </div>
+        <div id="candidates-container">
+          <div style="padding: 20px; text-align: center; color: var(--text-secondary);">
+            Click <strong>"Run Planning Pipeline"</strong> to generate optimal Pareto needle access trajectories.
+          </div>
+        </div>
+      </div>
+
+      <!-- Clinician Actions -->
+      <div class="panel-section" style="margin-top: auto; background-color: var(--bg-surface-elevated);">
+        <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
+          🛡️ Laterality Multi-Evidence Gate (U1)
+        </button>
+        <button id="btn-approve-trajectory" class="btn btn-success" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+          ✓ Approve Selected Trajectory
+        </button>
+        <button id="btn-open-rehearsal" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+          🎯 Dual-Monitor Rehearsal Cockpit
+        </button>
+        <button id="btn-open-verbal-protocol" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+          📋 C-Arm Verbal Readback Card (U4)
+        </button>
+        <button id="btn-open-phantom" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+          🧱 Phantom Metrology & Molds
+        </button>
+        <button id="btn-open-fluoroscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+          🔬 C-Arm Forward Projection DRR
+        </button>
+        <button id="btn-manual-override" class="btn" style="width: 100%; justify-content: center;">
+          ✏️ Manual Override / Recalculate
+        </button>
+      </div>
+    </aside>
+
+  </div>
+
+  <!-- Virtual Fluoroscopy Modal -->
+  <div id="modal-fluoroscopy" class="modal-overlay">
+    <div class="modal-content" style="width: 680px;">
+      <div class="modal-header">
+        <span>Virtual Fluoroscopy C-Arm Simulation</span>
+        <button class="btn" onclick="document.getElementById('modal-fluoroscopy').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px;">
+          <!-- Bull's-eye View -->
+          <div style="background: #000; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="color: var(--accent-cyan); font-weight: 700; margin-bottom: 6px;">Bull's-Eye View (Co-axial)</div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;">Beam aligned along needle axis</div>
+            <div style="height: 140px; border: 1px dashed #334155; display: flex; align-items: center; justify-content: center; color: #64748b;">
+              <div style="width: 16px; height: 16px; border: 2px solid #00e5a3; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                <div style="width: 4px; height: 4px; background: #00e5a3; border-radius: 50%;"></div>
+              </div>
+            </div>
+            <div id="fluoro-bullseye-info" style="font-size: 11px; margin-top: 8px; text-align: left;">
+              Projected Needle Length: <strong>0.0 mm</strong><br>
+              Axis Alignment Error: <strong>0.0°</strong>
+            </div>
+          </div>
+
+          <!-- Progression View -->
+          <div style="background: #000; border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="color: var(--accent-amber); font-weight: 700; margin-bottom: 6px;">Progression View (Orthogonal)</div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 10px;">Beam orthogonal to needle axis (90°)</div>
+            <div style="height: 140px; border: 1px dashed #334155; display: flex; align-items: center; justify-content: center; color: #64748b;">
+              <div style="width: 80px; height: 2px; background: #f59e0b; position: relative;">
+                <div style="position: absolute; right: 0; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: #e11d48;"></div>
+              </div>
+            </div>
+            <div id="fluoro-progression-info" style="font-size: 11px; margin-top: 8px; text-align: left;">
+              Projected Needle Length: <strong>-- mm</strong><br>
+              Depth Calibration: <strong>Orthogonal 90°</strong>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('modal-fluoroscopy').style.display='none'">Close Simulation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Dual-Monitor Surgical Rehearsal Modal (Phase 5 / M3 & M4) -->
+  <div id="modal-rehearsal" class="modal-overlay">
+    <div class="modal-content" style="width: 860px; max-width: 95vw;">
+      <div class="modal-header">
+        <span>🎯 Dual-Monitor C-Arm Puncture Rehearsal Simulator (Phase 5 Frozen v5.1)</span>
+        <button class="btn" onclick="document.getElementById('modal-rehearsal').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <!-- Transfer Card Header -->
+        <div style="background: rgba(0, 210, 255, 0.08); border: 1px solid var(--accent-cyan); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 11px; text-transform: uppercase; color: var(--accent-cyan); font-weight: 700;">C-Arm Technician ALARA Transfer Card</span>
+              <span id="transfer-laterality-badge" class="version-pill" style="background: rgba(2, 132, 199, 0.15); color: var(--accent-cyan); font-weight: 700; font-size: 10px;">LEFT</span>
+              <span id="transfer-confidence-badge" class="version-pill" style="background: rgba(4, 120, 87, 0.15); color: #00e5a3; font-weight: 700; font-size: 10px;">DEVICE_PROFILE_CALIBRATED</span>
+              <span id="transfer-cal-rev-badge" class="version-pill" style="font-size: 10px; color: var(--text-secondary);">CAL-REV-2026A</span>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: var(--text-secondary);">
+              Pulse Rate: <strong style="color: var(--accent-teal);">8 PPS (ALARA)</strong> | Collimation: <strong>Conformal</strong>
+            </div>
+          </div>
+          <div id="transfer-angles-display" style="font-size: 13px; font-weight: 600; margin-top: 4px;">
+            Bull's-Eye: <span style="color: #00e5a3;">LAO 18.0° CAUD 12.0°</span> | Depth: <span style="color: #f59e0b;">RAO 12.0° CAUD 12.0°</span>
+          </div>
+          <!-- Mandatory Preoperative Plan Assumption Block -->
+          <div id="transfer-assumption-block" style="font-size: 10px; line-height: 1.4; color: var(--accent-amber); background: rgba(245, 158, 11, 0.08); border-left: 3px solid var(--accent-amber); padding: 6px 10px; margin-top: 8px; border-radius: 2px;">
+            ⚠️ <strong>VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK:</strong> Starting projection poses are calculated from preoperative CT DICOM coordinates, assumed operative positioning, and calibrated C-arm kinematics. Actual intraoperative gantry position must be independently verified by the surgical team under live imaging.
+          </div>
+        </div>
+
+        <!-- Virtual Contrast Controls Row -->
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; padding: 0 4px;">
+          <span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">Dual-Monitor Real-Time Radiographic Projections:</span>
+          <label style="font-size: 11px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--text-primary);">
+            <input type="checkbox" id="rehearsal-contrast-toggle" checked style="accent-color: var(--accent-cyan);">
+            Virtual Pyelogram (Collecting System Attenuation Boost)
+          </label>
+        </div>
+
+        <!-- Dual C-Arm Display Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+          <!-- Monitor 2A: Bull's-Eye View -->
+          <div style="background: #000; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; text-align: center;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+              <span style="color: var(--accent-cyan); font-weight: 700;">Bull's-Eye View (En-Face)</span>
+              <span id="rehearsal-be-angles" style="color: var(--text-secondary);">LAO 18° CAUD 12°</span>
+            </div>
+            <div style="height: 180px; background: #05080e; border: 1px dashed #334155; border-radius: 4px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+              <img id="rehearsal-be-img" alt="Bull's-Eye DRR" style="display: none; width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0;" />
+              <div id="rehearsal-be-fallback" style="display: flex; flex-direction: column; align-items: center; position: relative; z-index: 2;">
+                <div style="width: 28px; height: 28px; border: 2px solid #00e5a3; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+                  <div style="width: 6px; height: 6px; background: #00e5a3; border-radius: 50%;"></div>
+                </div>
+                <span style="font-size: 10px; color: #64748b; margin-top: 6px;">Co-axial needle hub collapsed en-face</span>
+              </div>
+            </div>
+            <div id="rehearsal-be-metrics" style="font-size: 11px; color: var(--text-secondary); margin-top: 6px; text-align: left;">
+              Projected Shaft: <strong id="rehearsal-be-shaft">0.0 px (Collapsed)</strong>
+            </div>
+          </div>
+
+          <!-- Monitor 2B: Depth-Verification View -->
+          <div style="background: #000; border: 1px solid #1e293b; border-radius: 6px; padding: 10px; text-align: center;">
+            <div style="display: flex; justify-content: space-between; font-size: 11px; margin-bottom: 6px;">
+              <span style="color: var(--accent-amber); font-weight: 700;">Depth-Verification View</span>
+              <span id="rehearsal-dv-angles" style="color: var(--text-secondary);">RAO 12° CAUD 12°</span>
+            </div>
+            <div style="height: 180px; background: #05080e; border: 1px dashed #334155; border-radius: 4px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;">
+              <img id="rehearsal-dv-img" alt="Depth-Verification DRR" style="display: none; width: 100%; height: 100%; object-fit: contain; position: absolute; top: 0; left: 0;" />
+              <div id="rehearsal-dv-fallback" style="display: flex; flex-direction: column; align-items: center; position: relative; z-index: 2;">
+                <div style="width: 120px; height: 3px; background: #f59e0b; position: relative;">
+                  <div style="position: absolute; right: 0; top: -4px; width: 10px; height: 10px; border-radius: 50%; background: #e11d48;"></div>
+                  <div style="position: absolute; left: 30px; top: -2px; width: 1px; height: 7px; background: #94a3b8;"></div>
+                  <div style="position: absolute; left: 60px; top: -2px; width: 1px; height: 7px; background: #94a3b8;"></div>
+                  <div style="position: absolute; left: 90px; top: -2px; width: 1px; height: 7px; background: #94a3b8;"></div>
+                </div>
+                <span style="font-size: 10px; color: #64748b; margin-top: 10px;">Lateral profile with 1-cm depth markers</span>
+              </div>
+            </div>
+            <div id="rehearsal-dv-metrics" style="font-size: 11px; color: var(--text-secondary); margin-top: 6px; text-align: left;">
+              Penetration Depth: <strong id="rehearsal-depth-readout">0.0 mm</strong>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Needle Advancement Controls -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px 16px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <label style="font-size: 12px; font-weight: 700;">Interactive Needle Insertion Slider:</label>
+            <div id="rehearsal-phase-badge" class="version-pill" style="background: rgba(0, 229, 163, 0.15); color: #00e5a3; font-weight: 700;">
+              SKIN_ENTRY (0%)
+            </div>
+          </div>
+          <input type="range" id="rehearsal-slider" min="0" max="100" value="0" style="width: 100%; accent-color: var(--accent-cyan); cursor: pointer;">
+          <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
+            <span>0% Skin Entry</span>
+            <span>25% Flank Fascia</span>
+            <span>50% Parenchyma</span>
+            <span>85% Target Papilla Zone</span>
+            <span>100% Calculus Access</span>
+          </div>
+          <div id="rehearsal-tip-coords" style="font-size: 11px; color: var(--accent-cyan); margin-top: 8px; font-family: monospace;">
+            Tip LPS: [0.0, 0.0, 0.0] mm | Target Calyx: lower_pole_posterior
+          </div>
+
+          <!-- U5 Dynamic Depth Alarm Banner (Phase 6 / M4) -->
+          <div id="rehearsal-depth-alarm-banner" style="margin-top: 10px; padding: 8px 12px; border-radius: 4px; font-size: 11px; display: flex; align-items: center; justify-content: space-between; background: rgba(0, 229, 163, 0.1); border: 1px solid #00e5a3; color: #00e5a3;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span id="rehearsal-alarm-icon">🟢</span>
+              <span id="rehearsal-alarm-text">Normal flank needle advancement.</span>
+            </div>
+            <span id="rehearsal-alarm-dist" style="font-weight: 700;">Medial Margin: -- mm</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('modal-rehearsal').style.display='none'">Close Rehearsal</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Phantom Metrology & CAD Package Modal (Protocol M3.1 & M3.2) -->
+  <div id="modal-phantom" class="modal-overlay">
+    <div class="modal-content" style="width: 780px; max-width: 95vw;">
+      <div class="modal-header">
+        <span>🧱 Anthropomorphic Phantom Metrology & 3D Mold CAD (Phase 5 / M3)</span>
+        <button class="btn" onclick="document.getElementById('modal-phantom').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 12px;">
+          Multi-material tissue stack certified per Frozen Plan v5.1. Measured HU numbers must fall within analytical acceptance bands.
+        </div>
+
+        <!-- Metrology Uncertainty Card -->
+        <div style="background: rgba(245, 158, 11, 0.08); border: 1px solid var(--accent-amber); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center;">
+          <div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Mfg Error (σ_mfg)</div>
+            <div style="font-size: 14px; font-weight: 700; color: var(--accent-amber);">0.60 mm</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Reg Error (σ_reg)</div>
+            <div style="font-size: 14px; font-weight: 700; color: var(--accent-amber);">0.50 mm</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Meas Error (σ_meas)</div>
+            <div style="font-size: 14px; font-weight: 700; color: var(--accent-amber);">0.25 mm</div>
+          </div>
+          <div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Expanded U_95 (k=2)</div>
+            <div style="font-size: 14px; font-weight: 700; color: #00e5a3;">± 1.64 mm</div>
+          </div>
+        </div>
+
+        <!-- Tissue Stack Table -->
+        <div style="max-height: 220px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 6px; margin-bottom: 14px;">
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+              <tr style="background: var(--bg-surface-elevated); color: var(--text-secondary); text-align: left;">
+                <th style="padding: 8px;">Anatomical Layer</th>
+                <th style="padding: 8px;">Material Specification</th>
+                <th style="padding: 8px;">Target HU</th>
+                <th style="padding: 8px;">Acceptance Band</th>
+                <th style="padding: 8px;">Shore Hardness</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">1. Skin & Flank Fat</td>
+                <td style="padding: 8px;">Shore 00-30 Silicone / Ballistics Gelatin</td>
+                <td style="padding: 8px;">-10 HU</td>
+                <td style="padding: 8px;">[-50, +20] HU</td>
+                <td style="padding: 8px;">Shore 00-30</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">2. 10th-12th Ribs</td>
+                <td style="padding: 8px;">PETG/PLA + 15% CaCO3/BaSO4</td>
+                <td style="padding: 8px;">+850 HU</td>
+                <td style="padding: 8px;">[+600, +1100] HU</td>
+                <td style="padding: 8px;">Shore 75D</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">3. Renal Parenchyma</td>
+                <td style="padding: 8px;">Platinum-Cure Translucent Silicone</td>
+                <td style="padding: 8px;">+45 HU</td>
+                <td style="padding: 8px;">[+30, +60] HU</td>
+                <td style="padding: 8px;">Shore 10A</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">4. Pelvicalyceal Lumen</td>
+                <td style="padding: 8px;">Lost-Core Soluble PVA Cavity (Saline/Iodine)</td>
+                <td style="padding: 8px;">+10 HU</td>
+                <td style="padding: 8px;">[0, +350] HU</td>
+                <td style="padding: 8px;">--</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">5. Target Calculi</td>
+                <td style="padding: 8px;">Dental Stone + 10% BaSO4</td>
+                <td style="padding: 8px;">+1400 HU</td>
+                <td style="padding: 8px;">[+1200, +1700] HU</td>
+                <td style="padding: 8px;">Shore 85D</td>
+              </tr>
+              <tr style="border-top: 1px solid var(--border-color);">
+                <td style="padding: 8px; font-weight: 600;">6. Retrorenal Colon</td>
+                <td style="padding: 8px;">Silicone Tube with Air Lumen</td>
+                <td style="padding: 8px;">-800 HU</td>
+                <td style="padding: 8px;">[-900, -600] HU</td>
+                <td style="padding: 8px;">Shore 20A</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="document.getElementById('modal-phantom').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Nephron Functional Unit Micro-3D Inspector Modal -->
+  <div id="modal-nephron-magnifier" class="modal-overlay">
+    <div class="modal-content" style="width: 920px; max-width: 95vw;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 20px;">🔬</span>
+          <div>
+            <span style="color: #38bdf8; font-weight: 700; font-size: 14px;">Nephron Functional Unit — High-Resolution 3D Micro-Anatomy</span>
+            <div style="font-size: 11px; color: var(--text-secondary); font-weight: normal; margin-top: 1px;">
+              Direct microscopic structural inspection corresponding to the anatomical cross-section
+            </div>
+          </div>
+        </div>
+        <button class="btn" onclick="closeNephronMagnifier()">✕</button>
+      </div>
+      <div class="modal-body" style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 16px; padding: 16px;">
+        <!-- Left: Interactive 3D Canvas -->
+        <div style="background: radial-gradient(circle at center, #0f172a 0%, #020617 100%); border: 1px solid #1e293b; border-radius: 8px; height: 440px; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+          <div id="nephron-canvas-container" style="width: 100%; height: 100%;"></div>
+          <div style="position: absolute; bottom: 8px; left: 10px; font-size: 10px; color: #64748b; background: rgba(0,0,0,0.6); padding: 2px 8px; border-radius: 4px; pointer-events: none;">
+            🖱️ Drag to rotate | Scroll to zoom | PBR Medical Shaders
+          </div>
+        </div>
+
+        <!-- Right: Anatomical Breakdown matching Textbook Reference -->
+        <div style="display: flex; flex-direction: column; gap: 10px; max-height: 440px; overflow-y: auto; padding-right: 4px;">
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #ef4444;">
+              <span>🔴</span> Afferent & Efferent Arterioles
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              High-pressure microvascular feed supplying the glomerular capillary bed and receiving filtered blood exiting into peritubular capillaries.
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #fbbf24;">
+              <span>🟡</span> Glomerulus & Bowman's Capsule
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              Spherical filtration tuft enclosed by double-walled epithelial capsule. Filters ~125 mL/min of primary urine driven by hydrostatic pressure.
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #f59e0b;">
+              <span>🟠</span> Proximal Convoluted Tubule (PCT)
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              Extensive convoluted cortical segments with brush-border microvilli reabsorbing ~65% of filtered water, sodium, glucose, and amino acids.
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #3b82f6;">
+              <span>🔵</span> Loop of Henle (Medullary Hairpin)
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              Deep hairpin loop descending into medullary pyramid. Creates hypertonic interstitial gradient via countercurrent multiplier mechanism.
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #f97316;">
+              <span>🟤</span> Distal Convoluted Tubule (DCT)
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              Cortical segment mediating hormonal regulation of calcium (PTH) and sodium reabsorption / potassium secretion (Aldosterone).
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 12px;">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: #eab308;">
+              <span>🏺</span> Collecting Duct & Papillary Duct
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-top: 3px; line-height: 1.35;">
+              Straight vertical conduit channeling concentrated urine under ADH/vasopressin control down to the cribriform area of the renal papilla.
+            </div>
+          </div>
+
+          <!-- PCNL Clinical Note -->
+          <div style="background: rgba(0, 229, 163, 0.08); border: 1px solid var(--accent-teal); border-radius: 6px; padding: 10px 12px;">
+            <div style="font-weight: 700; font-size: 11px; color: var(--accent-teal); margin-bottom: 2px;">
+              ⚕️ PCNL Access Invariant (Nephron Sparing)
+            </div>
+            <div style="font-size: 10.5px; color: var(--text-secondary); line-height: 1.35;">
+              AcuCalyx aligns punctures strictly through the avascular papilla fornix (Brödel's line) to prevent shearing medullary Henle loops and avoid transecting interlobar vascular arcades.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="closeNephronMagnifier()">Return to 3D Cockpit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Manual Override Modal -->
+  <div id="modal-override" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <span>Clinician Manual Override</span>
+        <button class="btn" onclick="document.getElementById('modal-override').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">
+          Per AcuCalyx governance, adjusting target coordinates or organ boundaries marks downstream plans as <strong>STALE</strong> and logs an immutable audit event.
+        </p>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 11px; margin-bottom: 4px;">Override Type:</label>
+          <select id="override-type" class="case-select" style="width: 100%;">
+            <option value="CALYX_TARGET">Adjust Target Calyx Papilla</option>
+            <option value="HAZARD_BUFFER">Expand Retrorenal Colon Hazard Buffer</option>
+            <option value="MASK_ADJUSTMENT">Modify Kidney Segmentation Envelope</option>
+          </select>
+        </div>
+        <div style="margin-bottom: 12px;">
+          <label style="display: block; font-size: 11px; margin-bottom: 4px;">Clinical Rationale (Mandatory for CDS Audit):</label>
+          <textarea id="override-reason" rows="3" style="width: 100%; background: var(--bg-surface-elevated); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px; border-radius: 6px; font-family: inherit; font-size: 12px;" placeholder="Document rationale for deviating from automated proposal..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="document.getElementById('modal-override').style.display='none'">Cancel</button>
+        <button id="btn-submit-override" class="btn btn-primary">Apply & Mark Stale</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Laterality Verification Gate Modal (Interlock U1 / IEC 62366-1) -->
+  <div id="modal-laterality" class="modal-overlay">
+    <div class="modal-content" style="width: 580px;">
+      <div class="modal-header">
+        <span>🛡️ Interlock U1: Pre-Puncture Laterality Verification Gate</span>
+        <button class="btn" onclick="document.getElementById('modal-laterality').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: rgba(245, 158, 11, 0.1); border: 1px solid var(--accent-amber); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+          <div style="font-weight: 700; color: var(--accent-amber); font-size: 12px; margin-bottom: 4px;">CRITICAL SAFETY GATE (IEC 62366-1 Task C1 / Risk Control U1)</div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
+            Prevents catastrophic wrong-kidney puncture. Requires explicit multi-evidence confirmation comparing clinician selection, CT metadata, and anatomical landmarks before access planning can proceed.
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">CT Metadata Laterality</div>
+            <div id="lat-ct-side-display" style="font-size: 16px; font-weight: 700; color: var(--accent-cyan); margin-top: 4px;">LEFT KIDNEY</div>
+          </div>
+          <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Active Case ID</div>
+            <div id="lat-case-id-display" style="font-size: 13px; font-weight: 600; font-family: monospace; margin-top: 4px;">--</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 6px;">Target Kidney Side Selection:</label>
+          <div style="display: flex; gap: 16px;">
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <input type="radio" name="lat-target-side" value="LEFT" checked> Left Kidney
+            </label>
+            <label style="font-size: 12px; display: flex; align-items: center; gap: 6px;">
+              <input type="radio" name="lat-target-side" value="RIGHT"> Right Kidney
+            </label>
+          </div>
+        </div>
+
+        <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; margin-bottom: 6px;">Anatomical Landmark Verification:</div>
+          <label style="display: block; font-size: 11px; margin-bottom: 6px;">
+            <input type="checkbox" id="check-landmark-spleen" checked> Spleen visualized in left upper quadrant
+          </label>
+          <label style="display: block; font-size: 11px; margin-bottom: 6px;">
+            <input type="checkbox" id="check-landmark-liver" checked> Liver visualized in right upper quadrant
+          </label>
+          <label style="display: block; font-size: 11px;">
+            <input type="checkbox" id="check-landmark-spine" checked> Spine / prone table coordinate orientation concordant
+          </label>
+        </div>
+
+        <div style="margin-bottom: 6px;">
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 700; color: var(--accent-cyan);">
+            <input type="checkbox" id="check-twostep-confirm">
+            I verify target laterality as the Attending Surgeon (Two-Step Sign-Off).
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="document.getElementById('modal-laterality').style.display='none'">Cancel</button>
+        <button id="btn-submit-laterality" class="btn btn-primary">Confirm Laterality & Unlock</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- C-Arm Technician Communication Card & Verbal Readback Modal (Interlock U4) -->
+  <div id="modal-verbal-protocol" class="modal-overlay">
+    <div class="modal-content" style="width: 760px; max-width: 95vw;">
+      <div class="modal-header">
+        <span>📋 Interlock U4: C-Arm Technologist Communication Card & Closed-Loop Verbal Readback</span>
+        <button class="btn" onclick="document.getElementById('modal-verbal-protocol').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;">
+          <!-- Transfer Angles Card -->
+          <div style="background: rgba(0, 210, 255, 0.08); border: 1px solid var(--accent-cyan); border-radius: 6px; padding: 12px;">
+            <div style="font-size: 11px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 6px;">PHYSICAL C-ARM GANTRY PRESETS</div>
+            <div id="vp-carm-model" style="font-size: 12px; font-weight: 600; margin-bottom: 8px;">Hardware: Philips Zenition 70 (Flat Detector)</div>
+            <div style="font-size: 12px; margin-bottom: 4px;">
+              Bull's-Eye (En-Face): <strong id="vp-be-angles" style="color: #00e5a3;">--</strong>
+            </div>
+            <div style="font-size: 12px; margin-bottom: 8px;">
+              Depth Verification (90°): <strong id="vp-dv-angles" style="color: #f59e0b;">--</strong>
+            </div>
+            <div style="font-size: 11px; color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 6px;">
+              ALARA Pulse Rate: <strong style="color: var(--accent-teal);">8 PPS</strong> | Collimation: <strong>15 x 15 cm</strong>
+            </div>
+          </div>
+
+          <!-- Tube Direction Hint -->
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+            <div style="font-size: 11px; font-weight: 700; color: var(--accent-teal); margin-bottom: 6px;">OPERATING ROOM GANTRY PHYSICAL ORIENTATION</div>
+            <p id="vp-tube-hint" style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-top: 4px;">
+              Tube position: Under table angled toward target; detector positioned anterior to prone patient table.
+            </p>
+          </div>
+        </div>
+
+        <!-- 4-Step Closed Loop Script -->
+        <div style="background: #000; border: 1px solid #1e293b; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; color: #00e5a3; margin-bottom: 8px;">MANDATORY 4-STEP CLOSED-LOOP CALLOUT PROTOCOL</div>
+          <div style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; font-family: monospace;">
+            <div style="padding: 6px; background: rgba(0, 210, 255, 0.06); border-left: 3px solid var(--accent-cyan);">
+              <span style="color: var(--accent-cyan); font-weight: 700;">1. DIRECTIVE:</span>
+              <span id="vp-script-step1">Surgeon: "AcuCalyx: Set Bull's-Eye View."</span>
+            </div>
+            <div style="padding: 6px; background: rgba(0, 229, 163, 0.06); border-left: 3px solid var(--accent-teal);">
+              <span style="color: var(--accent-teal); font-weight: 700;">2. READBACK:</span>
+              <span id="vp-script-step2">Technician: "Bull's-Eye View: Primary LAO 18°, Secondary CAUD 12°."</span>
+            </div>
+            <div style="padding: 6px; background: rgba(245, 158, 11, 0.06); border-left: 3px solid var(--accent-amber);">
+              <span style="color: var(--accent-amber); font-weight: 700;">3. CONFIRMATION:</span>
+              <span id="vp-script-step3">Surgeon: "Confirmed: Rotate gantry to LAO 18°, CAUD 12°."</span>
+            </div>
+            <div style="padding: 6px; background: rgba(56, 189, 248, 0.06); border-left: 3px solid #38bdf8;">
+              <span style="color: #38bdf8; font-weight: 700;">4. LOCK & VERIFY:</span>
+              <span id="vp-script-step4">Technician: "Gantry locked. Ready for pulse fluoroscopy."</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Interactive Transposition Error Detector -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="font-size: 11px; font-weight: 700; margin-bottom: 8px;">TEST C-ARM TECHNICIAN GANTRY ANGLE ENTRY (TRANSPOSITION TRAP):</div>
+          <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 8px;">
+            <div>
+              <label style="font-size: 10px; color: var(--text-secondary);">Entered Primary (°):</label>
+              <input type="number" id="vp-test-primary" style="width: 100px; padding: 4px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 4px;" value="18.0">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: var(--text-secondary);">Entered Secondary (°):</label>
+              <input type="number" id="vp-test-secondary" style="width: 100px; padding: 4px; background: #000; border: 1px solid var(--border-color); color: #fff; border-radius: 4px;" value="-12.0">
+            </div>
+            <button id="btn-validate-carm-entry" class="btn btn-primary" style="margin-top: 14px;">Verify Gantry Entry</button>
+          </div>
+          <div id="vp-validation-result" style="font-size: 11px; padding: 6px 10px; border-radius: 4px; display: none;">
+            Validation status...
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-primary" onclick="document.getElementById('modal-verbal-protocol').style.display='none'">Close Protocol Card</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="viewer.js?v=20261002_05"></script>
+  <script src="mpr.js?v=20261002_05"></script>
+
+  <script>
+    let viewer3d = null;
+    let mprViewer = null;
+    let currentCaseId = null;
+    let currentCandidates = [];
+    let selectedCandidateId = null;
+
+    function applyAppTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      const sel = document.getElementById('theme-select');
+      if (sel && sel.value !== theme) sel.value = theme;
+      try { localStorage.setItem('acucalyx_theme', theme); } catch(e) {}
+      if (window.viewer3d && typeof window.viewer3d.setTheme === 'function') {
+        window.viewer3d.setTheme(theme);
+      }
+    }
+    window.applyAppTheme = applyAppTheme;
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      // 0. Initialize Theme
+      let savedTheme = 'hybrid';
+      try { savedTheme = localStorage.getItem('acucalyx_theme') || 'hybrid'; } catch(e) {}
+      applyAppTheme(savedTheme);
+
+      // 1. Initialize Viewers
+      viewer3d = new AcuCalyxViewer3D('three-container');
+      window.viewer3d = viewer3d;
+      viewer3d.setTheme(savedTheme);
+      mprViewer = new AcuCalyxMPRViewer('mpr-slice-img', 'mpr-slider', 'mpr-slice-label');
+
+      // 2. Wire Trajectory Selection from 3D Scene
+      window.addEventListener('acucalyx:trajectory-selected', (e) => {
+        selectTrajectory(e.detail.candidateId);
+      });
+
+      // 3. UI Buttons
+      document.getElementById('btn-new-demo').addEventListener('click', createDemoCase);
+      document.getElementById('btn-run-plan').addEventListener('click', runPlanning);
+      document.getElementById('btn-download-pdf').addEventListener('click', downloadPDF);
+      document.getElementById('btn-provenance').addEventListener('click', showProvenance);
+      document.getElementById('btn-approve-trajectory').addEventListener('click', approveTrajectory);
+      document.getElementById('btn-open-rehearsal').addEventListener('click', openRehearsal);
+      document.getElementById('btn-open-laterality').addEventListener('click', openLateralityModal);
+      document.getElementById('btn-submit-laterality').addEventListener('click', submitLateralityConfirmation);
+      document.getElementById('btn-open-verbal-protocol').addEventListener('click', openVerbalProtocolCard);
+      document.getElementById('btn-validate-carm-entry').addEventListener('click', validateCarmAngleEntry);
+      document.getElementById('btn-open-phantom').addEventListener('click', () => {
+        document.getElementById('modal-phantom').style.display = 'flex';
+      });
+      document.getElementById('rehearsal-slider').addEventListener('input', updateRehearsalAdvancement);
+      document.getElementById('rehearsal-contrast-toggle')?.addEventListener('change', loadRehearsalDrrImages);
+      document.getElementById('btn-open-fluoroscopy').addEventListener('click', openFluoroscopy);
+      document.getElementById('btn-manual-override').addEventListener('click', () => {
+        document.getElementById('modal-override').style.display = 'flex';
+      });
+      document.getElementById('btn-submit-override').addEventListener('click', submitOverride);
+
+      // Layer Toggles
+      document.getElementById('layer-kidney').addEventListener('change', (e) => viewer3d.setLayerVisibility('kidney', e.target.checked));
+      document.getElementById('opacity-kidney').addEventListener('input', (e) => viewer3d.setLayerOpacity('kidney', parseFloat(e.target.value)));
+
+      document.getElementById('layer-capsule').addEventListener('change', (e) => viewer3d.setLayerVisibility('renal_capsule', e.target.checked));
+      document.getElementById('opacity-capsule').addEventListener('input', (e) => viewer3d.setLayerOpacity('renal_capsule', parseFloat(e.target.value)));
+
+      document.getElementById('layer-pyramids').addEventListener('change', (e) => viewer3d.setLayerVisibility('medulla_pyramids', e.target.checked));
+      document.getElementById('opacity-pyramids').addEventListener('input', (e) => viewer3d.setLayerOpacity('medulla_pyramids', parseFloat(e.target.value)));
+
+      document.getElementById('layer-collecting').addEventListener('change', (e) => viewer3d.setLayerVisibility('collecting_system', e.target.checked));
+      document.getElementById('opacity-collecting').addEventListener('input', (e) => viewer3d.setLayerOpacity('collecting_system', parseFloat(e.target.value)));
+
+      document.getElementById('layer-arteries').addEventListener('change', (e) => viewer3d.setLayerVisibility('renal_arteries', e.target.checked));
+      document.getElementById('opacity-arteries').addEventListener('input', (e) => viewer3d.setLayerOpacity('renal_arteries', parseFloat(e.target.value)));
+
+      document.getElementById('layer-veins').addEventListener('change', (e) => viewer3d.setLayerVisibility('renal_veins', e.target.checked));
+      document.getElementById('opacity-veins').addEventListener('input', (e) => viewer3d.setLayerOpacity('renal_veins', parseFloat(e.target.value)));
+
+      document.getElementById('layer-nerves').addEventListener('change', (e) => viewer3d.setLayerVisibility('renal_nerves', e.target.checked));
+      document.getElementById('opacity-nerves').addEventListener('input', (e) => viewer3d.setLayerOpacity('renal_nerves', parseFloat(e.target.value)));
+
+      document.getElementById('layer-nephrons').addEventListener('change', (e) => viewer3d.setLayerVisibility('nephrons', e.target.checked));
+      document.getElementById('opacity-nephrons').addEventListener('input', (e) => viewer3d.setLayerOpacity('nephrons', parseFloat(e.target.value)));
+
+      document.getElementById('layer-stones').addEventListener('change', (e) => viewer3d.setLayerVisibility('stones', e.target.checked));
+      document.getElementById('opacity-stones').addEventListener('input', (e) => viewer3d.setLayerOpacity('stones', parseFloat(e.target.value)));
+
+      document.getElementById('layer-colon').addEventListener('change', (e) => viewer3d.setLayerVisibility('colon', e.target.checked));
+      document.getElementById('opacity-colon').addEventListener('input', (e) => viewer3d.setLayerOpacity('colon', parseFloat(e.target.value)));
+
+      document.getElementById('layer-ribs').addEventListener('change', (e) => viewer3d.setLayerVisibility('ribs', e.target.checked));
+      document.getElementById('opacity-ribs').addEventListener('input', (e) => viewer3d.setLayerOpacity('ribs', parseFloat(e.target.value)));
+
+      // File upload handler
+      document.getElementById('file-upload').addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          const res = await fetch('/api/cases/upload', { method: 'POST', body: formData });
+          const data = await res.json();
+          await loadCasesList();
+          selectCase(data.case_id);
+        } catch (err) {
+          alert('Upload failed: ' + err.message);
+        }
+      });
+
+      // Case select dropdown change
+      document.getElementById('case-select').addEventListener('change', (e) => {
+        if (e.target.value) selectCase(e.target.value);
+      });
+
+      // Load initial cases
+      await loadCasesList();
+    });
+
+    async function loadCasesList() {
+      const res = await fetch('/api/cases');
+      const cases = await res.json();
+      const sel = document.getElementById('case-select');
+      sel.innerHTML = '';
+
+      if (cases.length === 0) {
+        sel.innerHTML = '<option value="">No cases available (Create Demo)</option>';
+        return;
+      }
+
+      cases.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.case_id;
+        opt.textContent = `${c.case_id} [${c.state}]`;
+        sel.appendChild(opt);
+      });
+
+      if (!currentCaseId && cases.length > 0) {
+        selectCase(cases[0].case_id);
+      }
+    }
+
+    async function createDemoCase() {
+      const btn = document.getElementById('btn-new-demo');
+      btn.textContent = '⏳ Creating...';
+      try {
+        const res = await fetch('/api/cases/demo', { method: 'POST' });
+        const data = await res.json();
+        await loadCasesList();
+        selectCase(data.case_id);
+      } catch (err) {
+        alert('Demo creation failed: ' + err.message);
+      } finally {
+        btn.textContent = '+ Synthetic Demo';
+      }
+    }
+
+    async function selectCase(caseId) {
+      currentCaseId = caseId;
+      document.getElementById('case-select').value = caseId;
+
+      // Fetch status
+      const res = await fetch(`/api/cases/${caseId}/status`);
+      const meta = await res.json();
+
+      updateStateBadge(meta.state, meta.is_stale);
+      document.getElementById('target-side-label').textContent = `${meta.target_side.toUpperCase()} KIDNEY`;
+
+      mprViewer.setCase(caseId);
+      viewer3d.clearScene();
+
+      // If already planned, fetch artifacts; otherwise load full anatomical baseline
+      if (meta.state === 'PLAN_GENERATED' || meta.state === 'CLINICIAN_REVIEW' || meta.state === 'FINALIZED') {
+        await loadCaseArtifacts(caseId);
+      } else {
+        await loadAnatomicalMeshesOnly(caseId);
+      }
+    }
+
+    function updateStateBadge(state, isStale) {
+      const badge = document.getElementById('case-state-badge');
+      if (isStale) {
+        badge.className = 'state-badge state-stale';
+        badge.textContent = 'STALE PLAN';
+      } else {
+        badge.className = `state-badge state-${state.toLowerCase()}`;
+        badge.textContent = state;
+      }
+    }
+
+    async function runPlanning() {
+      if (!currentCaseId) return;
+      const btn = document.getElementById('btn-run-plan');
+      btn.textContent = '⏳ Planning...';
+      btn.disabled = true;
+
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/plan`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target_side: 'left', coarse_step_mm: 15.0 })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Planning failed');
+        }
+        const data = await res.json();
+        updateStateBadge(data.state, data.is_stale);
+        await loadCaseArtifacts(currentCaseId);
+      } catch (err) {
+        alert('Planning error: ' + err.message);
+      } finally {
+        btn.textContent = '⚡ Run Planning Pipeline';
+        btn.disabled = false;
+      }
+    }
+
+    async function loadAnatomicalMeshesOnly(caseId) {
+      viewer3d.clearScene();
+      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
+      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
+      await viewer3d.loadMesh(caseId, 'medulla_pyramids', 'medulla_pyramids', 0.85);
+      await viewer3d.loadMesh(caseId, 'collecting_system', 'collecting_system', 0.90);
+      await viewer3d.loadMesh(caseId, 'renal_arteries', 'renal_arteries', 0.85);
+      await viewer3d.loadMesh(caseId, 'renal_veins', 'renal_veins', 0.80);
+      await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
+      await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
+      await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
+    }
+
+    async function loadCaseArtifacts(caseId) {
+      // 1. Stones
+      try {
+        const sRes = await fetch(`/api/cases/${caseId}/stones`);
+        const stones = await sRes.json();
+        if (stones.length > 0) {
+          document.getElementById('info-stone-count').textContent = stones.length;
+          const totalVol = stones.reduce((acc, s) => acc + s.volume_mm3, 0);
+          document.getElementById('info-stone-vol').textContent = `${totalVol.toFixed(1)} mm³`;
+          const maxFeret = Math.max(...stones.map(s => s.max_feret_diameter_mm));
+          document.getElementById('info-stone-feret').textContent = `${maxFeret.toFixed(1)} mm`;
+          document.getElementById('info-stone-hu').textContent = `${Math.round(stones[0].peak_hu)} HU`;
+          document.getElementById('info-composition').textContent = stones[0].composition_inference;
+        }
+      } catch (e) {}
+
+      // 1b. Milestone M11: Descriptive Nephrolithometry
+      try {
+        const nRes = await fetch(`/api/cases/${caseId}/nephrolithometry`);
+        if (nRes.ok) {
+          const nData = await nRes.json();
+          const guysGrade = nData.guys_stone_score.grade.replace('_', ' ');
+          document.getElementById('info-guys-grade').textContent = guysGrade;
+          document.getElementById('info-stone-score').textContent = `${nData.stone_nephrolithometry.total_score} / 13 (${nData.stone_nephrolithometry.complexity_tier})`;
+        }
+      } catch (e) {}
+
+      // 2. Candidates
+      try {
+        const cRes = await fetch(`/api/cases/${caseId}/candidates`);
+        currentCandidates = await cRes.json();
+        renderCandidatesList(currentCandidates);
+      } catch (e) {}
+
+      // 3. 3D Meshes (Realistic Anatomical Kidney Cross-Section & Highlighted Stone)
+      viewer3d.clearScene();
+      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
+      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
+      await viewer3d.loadMesh(caseId, 'medulla_pyramids', 'medulla_pyramids', 0.85);
+      await viewer3d.loadMesh(caseId, 'collecting_system', 'collecting_system', 0.90);
+      await viewer3d.loadMesh(caseId, 'renal_arteries', 'renal_arteries', 0.85);
+      await viewer3d.loadMesh(caseId, 'renal_veins', 'renal_veins', 0.80);
+      await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
+      await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
+      await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
+
+      // Trajectories
+      currentCandidates.forEach((c, idx) => {
+        viewer3d.addTrajectory(c, idx === 0);
+      });
+
+      if (currentCandidates.length > 0) {
+        selectTrajectory(currentCandidates[0].candidate_id);
+      }
+    }
+
+    // Nephron 3D Inspector Modal Subsystem
+    let nephronViewer = null;
+
+    function openNephronMagnifier() {
+      const modal = document.getElementById('modal-nephron-magnifier');
+      if (!modal) return;
+      modal.style.display = 'flex';
+
+      const container = document.getElementById('nephron-canvas-container');
+      if (!container) return;
+
+      if (!nephronViewer) {
+        nephronViewer = initNephron3DViewer(container, currentCaseId || 'DEMO_PHANTOM_185522');
+      } else {
+        nephronViewer.resize();
+      }
+    }
+
+    function closeNephronMagnifier() {
+      const modal = document.getElementById('modal-nephron-magnifier');
+      if (modal) modal.style.display = 'none';
+    }
+
+    window.openNephronMagnifier = openNephronMagnifier;
+    window.closeNephronMagnifier = closeNephronMagnifier;
+
+    function initNephron3DViewer(container, caseId) {
+      const width = container.clientWidth || 480;
+      const height = container.clientHeight || 420;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x060a14);
+
+      const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500.0);
+      camera.position.set(16.0, 36.0, 22.0);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(width, height);
+      renderer.setPixelRatio(window.devicePixelRatio || 1);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      container.appendChild(renderer.domElement);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+
+      const ambLight = new THREE.AmbientLight(0xffffff, 0.85);
+      scene.add(ambLight);
+      const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
+      dirLight.position.set(30, 50, 40);
+      scene.add(dirLight);
+
+      let nephronModel = null;
+      if (typeof THREE.GLTFLoader !== 'undefined') {
+        const loader = new THREE.GLTFLoader();
+        const url = `/api/cases/${caseId}/meshes/nephron_unit.glb`;
+        loader.load(url, (gltf) => {
+          nephronModel = gltf.scene;
+          const box = new THREE.Box3().setFromObject(nephronModel);
+          const center = box.getCenter(new THREE.Vector3());
+          nephronModel.position.sub(center);
+          controls.target.set(0, 0, 0);
+
+          nephronModel.traverse((child) => {
+            if (child.isMesh) {
+              child.material = new THREE.MeshStandardMaterial({
+                color: child.material && child.material.color ? child.material.color : 0xf59e0b,
+                vertexColors: true,
+                roughness: 0.35,
+                metalness: 0.15,
+                side: THREE.DoubleSide
+              });
+            }
+          });
+          scene.add(nephronModel);
+        });
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+        if (nephronModel) {
+          nephronModel.rotation.z += 0.005;
+        }
+        controls.update();
+        renderer.render(scene, camera);
+      }
+      animate();
+
+      return {
+        resize: () => {
+          const w = container.clientWidth || 480;
+          const h = container.clientHeight || 420;
+          camera.aspect = w / h;
+          camera.updateProjectionMatrix();
+          renderer.setSize(w, h);
+        }
+      };
+    }
+
+    function toggleMPRView() {
+      const mpr = document.getElementById('mpr-viewport');
+      const btn = document.getElementById('btn-toggle-mpr');
+      if (!mpr) return;
+      if (mpr.style.display === 'none' || !mpr.style.display) {
+        mpr.style.display = 'flex';
+        if (btn) {
+          btn.style.color = '#38bdf8';
+          btn.textContent = '✖ Close 2D Slice';
+        }
+      } else {
+        mpr.style.display = 'none';
+        if (btn) {
+          btn.style.color = '#a78bfa';
+          btn.textContent = '🔲 2D CT Slice';
+        }
+      }
+      setTimeout(() => {
+        if (viewer3d) viewer3d.onWindowResize();
+      }, 60);
+    }
+    window.toggleMPRView = toggleMPRView;
+
+    function renderCandidatesList(candidates) {
+      const container = document.getElementById('candidates-container');
+      const badge = document.getElementById('candidates-count-badge');
+      badge.textContent = `${candidates.length} Available`;
+
+      if (candidates.length === 0) {
+        container.innerHTML = '<div style="padding: 15px; color: var(--text-secondary); text-align: center;">No feasible candidates found.</div>';
+        return;
+      }
+
+      container.innerHTML = '';
+      candidates.forEach((c, idx) => {
+        const card = document.createElement('div');
+        card.className = `candidate-card ${idx === 0 ? 'active' : ''}`;
+        card.id = `card-${c.candidate_id}`;
+        card.onclick = () => selectTrajectory(c.candidate_id);
+
+        const letter = String.fromCharCode(65 + (idx % 26));
+        let badgeClass = 'badge-preferred';
+        let badgeLabel = 'FEASIBLE';
+        let badgeIcon = '🎯';
+
+        if (c.safety_badge === 'REJECTED') {
+          badgeClass = 'badge-rejected';
+          badgeIcon = '🛑';
+          badgeLabel = 'REJECTED';
+        } else if (c.safety_badge === 'CONDITIONAL' || c.safety_badge === 'MARGINAL') {
+          badgeClass = 'badge-conditional';
+          badgeIcon = '⚡';
+          badgeLabel = 'MARGINAL';
+        } else {
+          badgeClass = 'badge-preferred';
+          badgeIcon = '🎯';
+          badgeLabel = 'FEASIBLE';
+        }
+
+        let mcHtml = '';
+        if (c.uncertainty && c.uncertainty.length > 0) {
+          mcHtml = c.uncertainty.map(u => `
+            <div class="metric-row">
+              <span>MC Risk (${u.hazard_name}):</span>
+              <strong class="metric-val" style="color: ${u.collision_probability > 0.05 ? 'var(--accent-red)' : 'var(--accent-teal)'};">
+                ${(u.collision_probability * 100).toFixed(1)}% [${u.risk_category}]
+              </strong>
+            </div>
+          `).join('');
+        }
+
+        card.innerHTML = `
+          <div class="candidate-header">
+            <span style="font-weight: 700; color: var(--text-primary);">Candidate ${letter} (${c.candidate_id})</span>
+            <span class="${badgeClass}">${badgeIcon} ${badgeLabel}</span>
+          </div>
+          <div class="metric-row">
+            <span>Target Calyx:</span>
+            <strong>${c.target_calyx}</strong>
+          </div>
+          <div class="metric-row">
+            <span>Tract Length:</span>
+            <strong class="metric-val">${c.tract_length_mm.toFixed(1)} mm</strong>
+          </div>
+          <div class="metric-row">
+            <span>Min Clearance:</span>
+            <strong class="metric-val" style="color: ${c.min_effective_clearance_mm > 10 ? 'var(--accent-teal)' : 'var(--accent-amber)'};">${c.min_effective_clearance_mm.toFixed(1)} mm</strong>
+          </div>
+          <div class="metric-row">
+            <span>Stone Reach:</span>
+            <strong class="metric-val">${(c.reachable_stone_fraction * 100).toFixed(0)}%</strong>
+          </div>
+          <div class="metric-row">
+            <span>Rib Approach:</span>
+            <strong>${c.access_rib_classification}</strong>
+          </div>
+          ${mcHtml}
+        `;
+        container.appendChild(card);
+      });
+    }
+
+    function selectTrajectory(candidateId) {
+      selectedCandidateId = candidateId;
+      document.querySelectorAll('.candidate-card').forEach(c => c.classList.remove('active'));
+      const card = document.getElementById(`card-${candidateId}`);
+      if (card) card.classList.add('active');
+
+      viewer3d.setActiveTrajectory(candidateId);
+      const candObj = currentCandidates.find(c => c.candidate_id === candidateId);
+      if (candObj) {
+        mprViewer.setActiveCandidate(candObj);
+      }
+    }
+
+    async function approveTrajectory() {
+      if (!currentCaseId || !selectedCandidateId) {
+        alert('Please select a trajectory first.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/select`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            candidate_id: selectedCandidateId,
+            clinician_id: 'Surgeon_Attending_01',
+            clinical_rationale: 'Approved optimal lower pole access.'
+          })
+        });
+        const data = await res.json();
+        updateStateBadge(data.state, false);
+        alert(`Access Trajectory ${selectedCandidateId} approved and auditable signature logged.`);
+      } catch (err) {
+        alert('Approval failed: ' + err.message);
+      }
+    }
+
+    async function openFluoroscopy() {
+      if (!currentCaseId || !selectedCandidateId) {
+        alert('Please select a trajectory candidate first.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/fluoroscopy/${selectedCandidateId}`);
+        const data = await res.json();
+        const views = data.views;
+
+        document.getElementById('fluoro-bullseye-info').innerHTML = `
+          Projected Length: <strong>${views.BULLS_EYE.projected_needle_length_2d_mm.toFixed(1)} mm</strong><br>
+          Axis Alignment Error: <strong>${views.BULLS_EYE.alignment_angle_deg.toFixed(1)}°</strong><br>
+          Optical Axis: [${views.BULLS_EYE.optical_axis_unit.join(', ')}]
+        `;
+
+        document.getElementById('fluoro-progression-info').innerHTML = `
+          Projected Length: <strong>${views.PROGRESSION.projected_needle_length_2d_mm.toFixed(1)} mm</strong><br>
+          Detector Position: [${views.PROGRESSION.detector_position_lps.join(', ')}]<br>
+          Depth View: <strong>Orthogonal 90°</strong>
+        `;
+
+        document.getElementById('modal-fluoroscopy').style.display = 'flex';
+      } catch (err) {
+        alert('Could not fetch fluoroscopy data: ' + err.message);
+      }
+    }
+
+    async function submitOverride() {
+      const type = document.getElementById('override-type').value;
+      const reason = document.getElementById('override-reason').value;
+      if (!reason.trim()) {
+        alert('Clinical rationale is required for CDS audit.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/override`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            override_type: type,
+            reason: reason,
+            clinician_id: 'Surgeon_Attending_01'
+          })
+        });
+        const data = await res.json();
+        document.getElementById('modal-override').style.display = 'none';
+        updateStateBadge('STALE', true);
+        alert('Override recorded. Current plan flagged as STALE per AcuCalyx governance.');
+      } catch (err) {
+        alert('Override submission failed: ' + err.message);
+      }
+    }
+
+    function downloadPDF() {
+      if (!currentCaseId) return;
+      window.open(`/api/cases/${currentCaseId}/report`, '_blank');
+    }
+
+    async function showProvenance() {
+      if (!currentCaseId) return;
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/provenance`);
+        const data = await res.json();
+        alert(`AcuCalyx Cryptographic Provenance Manifest:\n\nCase ID: ${data.case_id}\nSoftware Version: ${data.software_version}\nInput SHA-256: ${data.input_data_sha256}\nConfig SHA-256: ${data.configuration_sha256}\nTimestamp: ${data.analysis_timestamp}`);
+      } catch (err) {
+        alert('Provenance record not found. Run planning first.');
+      }
+    }
+
+    async function openRehearsal() {
+      if (!currentCaseId) return;
+      document.getElementById('modal-rehearsal').style.display = 'flex';
+      try {
+        const candParam = selectedCandidateId ? `?candidate_id=${selectedCandidateId}` : '';
+        const cardRes = await fetch(`/api/cases/${currentCaseId}/rehearsal/transfer-card${candParam}`);
+        if (cardRes.ok) {
+          const card = await cardRes.json();
+          const beSignP = card.bullseye_primary_angle_deg >= 0 ? 'LAO' : 'RAO';
+          const beSignS = card.bullseye_secondary_angle_deg >= 0 ? 'CRAN' : 'CAUD';
+          const dvSignP = card.depth_primary_angle_deg >= 0 ? 'LAO' : 'RAO';
+          const dvSignS = card.depth_secondary_angle_deg >= 0 ? 'CRAN' : 'CAUD';
+
+          document.getElementById('transfer-angles-display').innerHTML = `
+            Bull's-Eye: <span style="color: #00e5a3;">${beSignP} ${Math.abs(card.bullseye_primary_angle_deg)}° ${beSignS} ${Math.abs(card.bullseye_secondary_angle_deg)}°</span> | 
+            Depth: <span style="color: #f59e0b;">${dvSignP} ${Math.abs(card.depth_primary_angle_deg)}° ${dvSignS} ${Math.abs(card.depth_secondary_angle_deg)}°</span>
+          `;
+          document.getElementById('rehearsal-be-angles').innerText = `${beSignP} ${Math.abs(card.bullseye_primary_angle_deg)}° ${beSignS} ${Math.abs(card.bullseye_secondary_angle_deg)}°`;
+          document.getElementById('rehearsal-dv-angles').innerText = `${dvSignP} ${Math.abs(card.depth_primary_angle_deg)}° ${dvSignS} ${Math.abs(card.depth_secondary_angle_deg)}°`;
+          
+          if (card.laterality) {
+            document.getElementById('transfer-laterality-badge').innerText = card.laterality;
+          }
+          if (card.projection_confidence) {
+            document.getElementById('transfer-confidence-badge').innerText = card.projection_confidence;
+          }
+          if (card.calibration_revision) {
+            document.getElementById('transfer-cal-rev-badge').innerText = card.calibration_revision;
+          }
+          if (card.mandatory_assumption_block) {
+            const cleanAssumption = card.mandatory_assumption_block.replace('VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK: ', '');
+            document.getElementById('transfer-assumption-block').innerHTML = `⚠️ <strong>VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK:</strong> ${cleanAssumption}`;
+          }
+        }
+        await loadRehearsalDrrImages();
+        await updateRehearsalAdvancement();
+      } catch (err) {
+        console.error('Error opening rehearsal:', err);
+      }
+    }
+
+    async function loadRehearsalDrrImages() {
+      if (!currentCaseId) return;
+      const contrastChecked = document.getElementById('rehearsal-contrast-toggle')?.checked ?? true;
+      const candId = selectedCandidateId || 'candidate_a';
+      const beImg = document.getElementById('rehearsal-be-img');
+      const dvImg = document.getElementById('rehearsal-dv-img');
+      const beFallback = document.getElementById('rehearsal-be-fallback');
+      const dvFallback = document.getElementById('rehearsal-dv-fallback');
+
+      if (beImg) {
+        beImg.src = `/api/cases/${currentCaseId}/drr/${candId}/bullseye?enable_contrast=${contrastChecked}&resolution=256`;
+        beImg.onload = () => {
+          beImg.style.display = 'block';
+          if (beFallback) beFallback.style.background = 'rgba(0,0,0,0.3)';
+        };
+        beImg.onerror = () => {
+          beImg.style.display = 'none';
+        };
+      }
+      if (dvImg) {
+        dvImg.src = `/api/cases/${currentCaseId}/drr/${candId}/depth_verification?enable_contrast=${contrastChecked}&resolution=256`;
+        dvImg.onload = () => {
+          dvImg.style.display = 'block';
+          if (dvFallback) dvFallback.style.background = 'rgba(0,0,0,0.3)';
+        };
+        dvImg.onerror = () => {
+          dvImg.style.display = 'none';
+        };
+      }
+    }
+
+    async function updateRehearsalAdvancement() {
+      if (!currentCaseId) return;
+      const slider = document.getElementById('rehearsal-slider');
+      const frac = parseFloat(slider.value) / 100.0;
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/rehearsal/state?advancement=${frac}`);
+        if (!res.ok) return;
+        const state = await res.json();
+        document.getElementById('rehearsal-phase-badge').innerText = `${state.active_progression_phase} (${Math.round(frac * 100)}%)`;
+        document.getElementById('rehearsal-depth-readout').innerText = `${state.penetration_depth_mm} mm / ${state.total_planned_depth_mm} mm`;
+        document.getElementById('rehearsal-tip-coords').innerText = `Tip LPS: [${state.current_tip_lps.join(', ')}] mm | Phase: ${state.active_progression_phase}`;
+        
+        const isCollapsed = state.bullseye_projection.is_collapsed;
+        document.getElementById('rehearsal-be-shaft').innerText = isCollapsed ? 
+          `0.0 px (Collapsed En-Face)` : `${state.bullseye_projection.shaft_length_px} px`;
+
+        // U5 Dynamic Depth Boundary Alarm Interlock
+        try {
+          const depthRes = await fetch(`/api/usability/cases/${currentCaseId}/depth-check`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              planned_depth_mm: state.total_planned_depth_mm,
+              current_penetration_mm: state.penetration_depth_mm,
+              calyx_luminal_depth_mm: 8.0,
+              metrology_uncertainty_u95_mm: 1.64
+            })
+          });
+          if (depthRes.ok) {
+            const depthData = await depthRes.json();
+            const tel = depthData.telemetry;
+            const banner = document.getElementById('rehearsal-depth-alarm-banner');
+            const icon = document.getElementById('rehearsal-alarm-icon');
+            const text = document.getElementById('rehearsal-alarm-text');
+            const dist = document.getElementById('rehearsal-alarm-dist');
+            
+            text.innerText = tel.message;
+            dist.innerText = `Medial Margin: ${tel.distance_to_medial_wall_mm} mm`;
+            
+            if (tel.status === 'COUNTER_PUNCTURE_CRITICAL_STOP') {
+              banner.style.background = 'rgba(225, 29, 72, 0.25)';
+              banner.style.borderColor = '#e11d48';
+              banner.style.color = '#ff4d6d';
+              icon.innerText = '🛑';
+            } else if (tel.status === 'MEDIAL_WALL_WARNING') {
+              banner.style.background = 'rgba(245, 158, 11, 0.2)';
+              banner.style.borderColor = '#f59e0b';
+              banner.style.color = '#fbbf24';
+              icon.innerText = '⚠️';
+            } else if (tel.status === 'LUMINAL_ACCESS') {
+              banner.style.background = 'rgba(0, 210, 255, 0.15)';
+              banner.style.borderColor = '#00d2ff';
+              banner.style.color = '#38bdf8';
+              icon.innerText = '🎯';
+            } else if (tel.status === 'TARGET_PAPILLA_ZONE') {
+              banner.style.background = 'rgba(0, 229, 163, 0.15)';
+              banner.style.borderColor = '#00e5a3';
+              banner.style.color = '#34d399';
+              icon.innerText = '⬢';
+            } else {
+              banner.style.background = 'rgba(148, 163, 184, 0.1)';
+              banner.style.borderColor = '#475569';
+              banner.style.color = '#94a3b8';
+              icon.innerText = '🟢';
+            }
+          }
+        } catch (e) {
+          console.debug('Depth check error:', e);
+        }
+      } catch (err) {
+        console.error('Error updating rehearsal state:', err);
+      }
+    }
+
+    // Interlock U1: Pre-Puncture Laterality Verification
+    function openLateralityModal() {
+      if (!currentCaseId) {
+        alert('Please load or create an active case first.');
+        return;
+      }
+      document.getElementById('lat-case-id-display').innerText = currentCaseId;
+      const targetSide = document.getElementById('target-side-label').innerText.includes('RIGHT') ? 'RIGHT' : 'LEFT';
+      document.getElementById('lat-ct-side-display').innerText = `${targetSide} KIDNEY`;
+      document.getElementById('modal-laterality').style.display = 'flex';
+    }
+
+    async function submitLateralityConfirmation() {
+      if (!currentCaseId) return;
+      const isTwoStep = document.getElementById('check-twostep-confirm').checked;
+      if (!isTwoStep) {
+        alert('Interlock U1 Violation: Explicit Two-Step confirmation signature required.');
+        return;
+      }
+
+      const selectedSide = document.querySelector('input[name="lat-target-side"]:checked').value;
+      const ctSide = document.getElementById('target-side-label').innerText.includes('RIGHT') ? 'RIGHT' : 'LEFT';
+      const landmarks = {
+        spleen_left_quadrant: document.getElementById('check-landmark-spleen').checked,
+        liver_right_quadrant: document.getElementById('check-landmark-liver').checked,
+        spine_prone_table_concordant: document.getElementById('check-landmark-spine').checked
+      };
+
+      try {
+        const res = await fetch(`/api/usability/cases/${currentCaseId}/laterality-confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            clinician_selected_side: selectedSide,
+            ct_metadata_side: ctSide,
+            landmark_checks: landmarks,
+            is_two_step_confirmed: true
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          alert(`Interlock U1 Rejection:\n\n${errData.detail || 'Laterality verification failed.'}`);
+          return;
+        }
+
+        const data = await res.json();
+        document.getElementById('modal-laterality').style.display = 'none';
+        alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY. Planning unlocked.`);
+      } catch (err) {
+        alert('Laterality check network error: ' + err.message);
+      }
+    }
+
+    // Interlock U4: C-Arm Technologist Communication Card & Verbal Readback
+    async function openVerbalProtocolCard() {
+      if (!currentCaseId) {
+        alert('Please load or create an active case first.');
+        return;
+      }
+      try {
+        const res = await fetch(`/api/usability/cases/${currentCaseId}/verbal-card?carm_model=philips_zenition_70`);
+        if (!res.ok) {
+          alert('Could not generate verbal communication card.');
+          return;
+        }
+        const card = await res.json();
+        document.getElementById('vp-carm-model').innerText = `Hardware Profile: ${card.carm_model}`;
+        document.getElementById('vp-be-angles').innerText = `Primary ${card.bullseye_angles.primary_deg}°, Secondary ${card.bullseye_angles.secondary_deg}°`;
+        document.getElementById('vp-dv-angles').innerText = `Primary ${card.depth_angles.primary_deg}°, Secondary ${card.depth_angles.secondary_deg}°`;
+        document.getElementById('vp-tube-hint').innerText = card.tube_direction_hint;
+
+        document.getElementById('vp-script-step1').innerText = card.bullseye_verbal_script.directive;
+        document.getElementById('vp-script-step2').innerText = card.bullseye_verbal_script.readback;
+        document.getElementById('vp-script-step3').innerText = card.bullseye_verbal_script.confirmation;
+        document.getElementById('vp-script-step4').innerText = card.bullseye_verbal_script.verification;
+
+        document.getElementById('vp-test-primary').value = card.bullseye_angles.primary_deg;
+        document.getElementById('vp-test-secondary').value = card.bullseye_angles.secondary_deg;
+
+        const valBox = document.getElementById('vp-validation-result');
+        valBox.style.display = 'none';
+
+        document.getElementById('modal-verbal-protocol').style.display = 'flex';
+      } catch (err) {
+        alert('Error loading verbal protocol card: ' + err.message);
+      }
+    }
+
+    // C-Arm Angle Entry Transposition Error Detector
+    async function validateCarmAngleEntry() {
+      const beText = document.getElementById('vp-be-angles').innerText;
+      // Extract intended numbers from primary/secondary
+      const primEntered = parseFloat(document.getElementById('vp-test-primary').value);
+      const secEntered = parseFloat(document.getElementById('vp-test-secondary').value);
+
+      // Parse intended from card
+      const matches = beText.match(/Primary\s+([-\d.]+).*Secondary\s+([-\d.]+)/);
+      if (!matches) return;
+      const intendedPrim = parseFloat(matches[1]);
+      const intendedSec = parseFloat(matches[2]);
+
+      try {
+        const res = await fetch('/api/usability/carm-entry-validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            intended_primary_deg: intendedPrim,
+            intended_secondary_deg: intendedSec,
+            entered_primary_deg: primEntered,
+            entered_secondary_deg: secEntered,
+            tolerance_deg: 1.0
+          })
+        });
+
+        if (!res.ok) return;
+        const data = await res.json();
+        const valBox = document.getElementById('vp-validation-result');
+        valBox.style.display = 'block';
+
+        if (data.is_correct) {
+          valBox.style.background = 'rgba(0, 229, 163, 0.15)';
+          valBox.style.border = '1px solid #00e5a3';
+          valBox.style.color = '#00e5a3';
+          valBox.innerText = `✓ Gantry Angle Validated: Matches intended plan within 1.0° (Total Angular Error: ${data.total_angular_error_deg}°).`;
+        } else {
+          valBox.style.background = 'rgba(225, 29, 72, 0.2)';
+          valBox.style.border = '1px solid #e11d48';
+          valBox.style.color = '#ff4d6d';
+          valBox.innerText = `⚠️ ${data.error_description} (Type: ${data.transposition_error_type}, Total Angular Error: ${data.total_angular_error_deg}°).`;
+        }
+      } catch (err) {
+        console.error('Validation error:', err);
+      }
+    }
+  </script>
+</body>
+</html>
