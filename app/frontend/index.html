@@ -351,6 +351,11 @@
           </div>
           <div style="text-align: center; color: #cbd5e1; font-weight: 600;">▼ Inferior (Pole)</div>
         </div>
+
+        <!-- Synthetic Anatomical Reference Template Disclosure Badge -->
+        <div id="synthetic-mesh-warning" style="display: none; position: absolute; bottom: 14px; right: 14px; z-index: 20; background: rgba(245, 158, 11, 0.2); backdrop-filter: blur(8px); border: 1px solid var(--accent-amber); border-radius: 6px; padding: 6px 12px; pointer-events: none; font-size: 11px; color: var(--accent-amber); font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+          ⚠️ Reference Anatomical Template Active (Non-Patient-Specific)
+        </div>
       </div>
 
       <!-- 2D MPR Viewport (Collapsible Drawer) -->
@@ -399,7 +404,7 @@
       </div>
 
       <!-- Clinician Actions -->
-      <div class="panel-section" style="margin-top: auto; background-color: var(--bg-surface-elevated);">
+      <div class="panel-section clinician-actions-section" style="background-color: var(--bg-surface-elevated);">
         <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
           🛡️ Laterality Multi-Evidence Gate (U1)
         </button>
@@ -974,6 +979,8 @@
     let currentCaseId = null;
     let currentCandidates = [];
     let selectedCandidateId = null;
+    let currentCaseMeta = null;
+    let currentVerifiedLaterality = null;
 
     function applyAppTheme(theme) {
       document.documentElement.setAttribute('data-theme', theme);
@@ -1129,9 +1136,11 @@
       // Fetch status
       const res = await fetch(`/api/cases/${caseId}/status`);
       const meta = await res.json();
+      currentCaseMeta = meta;
+      currentVerifiedLaterality = meta.target_side || 'left';
 
       updateStateBadge(meta.state, meta.is_stale);
-      document.getElementById('target-side-label').textContent = `${meta.target_side.toUpperCase()} KIDNEY`;
+      document.getElementById('target-side-label').textContent = `${(meta.target_side || 'left').toUpperCase()} KIDNEY`;
 
       mprViewer.setCase(caseId);
       viewer3d.clearScene();
@@ -1157,15 +1166,16 @@
 
     async function runPlanning() {
       if (!currentCaseId) return;
+      const plannedSide = (currentVerifiedLaterality || (currentCaseMeta && currentCaseMeta.target_side) || 'left').toLowerCase();
       const btn = document.getElementById('btn-run-plan');
-      btn.textContent = '⏳ Planning...';
+      btn.textContent = `⏳ Planning (${plannedSide.toUpperCase()})...`;
       btn.disabled = true;
 
       try {
         const res = await fetch(`/api/cases/${currentCaseId}/plan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_side: 'left', coarse_step_mm: 15.0 })
+          body: JSON.stringify({ target_side: plannedSide, coarse_step_mm: 15.0 })
         });
         if (!res.ok) {
           const err = await res.json();
@@ -1183,6 +1193,8 @@
     }
 
     async function loadAnatomicalMeshesOnly(caseId) {
+      const warnBadge = document.getElementById('synthetic-mesh-warning');
+      if (warnBadge) warnBadge.style.display = 'block';
       viewer3d.clearScene();
       await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
       await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
@@ -1230,6 +1242,8 @@
       } catch (e) {}
 
       // 3. 3D Meshes (Realistic Anatomical Kidney Cross-Section & Highlighted Stone)
+      const warnBadge = document.getElementById('synthetic-mesh-warning');
+      if (warnBadge) warnBadge.style.display = 'none';
       viewer3d.clearScene();
       await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
       await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
@@ -1751,6 +1765,11 @@
         }
 
         const data = await res.json();
+        currentVerifiedLaterality = (data.confirmed_side || selectedSide).toLowerCase();
+        if (currentCaseMeta) {
+          currentCaseMeta.target_side = currentVerifiedLaterality;
+        }
+        document.getElementById('target-side-label').textContent = `${currentVerifiedLaterality.toUpperCase()} KIDNEY (U1 VERIFIED)`;
         document.getElementById('modal-laterality').style.display = 'none';
         alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY. Planning unlocked.`);
       } catch (err) {

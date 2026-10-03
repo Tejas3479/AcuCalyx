@@ -411,6 +411,18 @@ input[type="range"] {
   display: inline-block;
 }
 
+/* Candidates Container Scrollable Area */
+#candidates-container {
+  max-height: calc(100vh - 460px);
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.clinician-actions-section {
+  flex-shrink: 0;
+  border-top: 1px solid var(--border-color);
+}
+
 /* Candidate Trajectory Card */
 .candidate-card {
   background-color: var(--bg-surface);
