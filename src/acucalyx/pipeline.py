@@ -56,7 +56,8 @@ from acucalyx.planning.target_candidates import (
 from acucalyx.planning.scope_model import STANDARD_RIGID_NEPHROSCOPE, FLEXIBLE_CYSTONEPHROSCOPE
 from acucalyx.planning.stone_reach import evaluate_access_stone_reach
 from acucalyx.planning.pareto_optimizer import (
-    CandidateTrajectory, extract_pareto_frontier
+    CandidateTrajectory, extract_pareto_frontier,
+    optimize_pcnl_access_candidates, PlanStatus, PlanEvaluationResult
 )
 from acucalyx.uncertainty.monte_carlo import (
     run_monte_carlo_clearance_analysis, MonteCarloRiskAssessment
@@ -552,18 +553,36 @@ def run_planning_pipeline(
             candidates.append(cand)
             cand_counter += 1
 
-    # Extract Pareto frontier
-    logger.info(f"Extracting Pareto frontier across {len(candidates)} candidates...")
-    pareto_candidates = extract_pareto_frontier(candidates) if candidates else []
+    # -------------------------------------------------------------
+    # Step 7: Three-Tier PCNL Access Planning & Fail-Safe Optimization
+    # -------------------------------------------------------------
+    logger.info(f"Evaluating {len(candidates)} candidates through 3-tier hard-constraint & Pareto optimization...")
+    eval_result = optimize_pcnl_access_candidates(
+        candidates=candidates,
+        instrument_profile=STANDARD_RIGID_NEPHROSCOPE,
+        min_clearance_threshold_mm=cfg.get("min_clearance_threshold_mm", 0.0),
+        evidence_valid=quality_gate.passed,
+        anatomy_supported=True,
+        target_identifiable=(len(puncture_zones) > 0),
+        uncertainty_exceeded=False
+    )
 
-    # Sort candidates: non-colliding first, subcostal preferred, shorter tract length
-    def candidate_sort_key(c: CandidateTrajectory):
-        has_collision = any(h.is_intersecting for h in c.hazard_evaluations)
-        rib_penalty = 0 if c.access_rib_classification == "SUBCOSTAL" else (1 if "11_12" in c.access_rib_classification else 2)
-        return (has_collision, -c.is_pareto_optimal, rib_penalty, -c.min_effective_clearance_mm, c.tract_length_mm)
+    if eval_result.status != PlanStatus.PLAN_AVAILABLE:
+        logger.warning(
+            f"Fail-Safe Gate Halted Plan Generation: {eval_result.status_message} "
+            f"(Status: {eval_result.status.value})"
+        )
+        plan_exec_status = eval_result.status.value
+        top_candidates = []
+    else:
+        plan_exec_status = "SUCCESS"
+        # Sort surviving Pareto candidates: subcostal preferred, maximum clearance, shorter tract length
+        def candidate_sort_key(c: CandidateTrajectory):
+            rib_penalty = 0 if c.access_rib_classification == "SUBCOSTAL" else (1 if "11_12" in c.access_rib_classification else 2)
+            return (rib_penalty, -c.min_effective_clearance_mm, c.tract_length_mm)
 
-    ranked_candidates = sorted(pareto_candidates, key=candidate_sort_key)
-    top_candidates = ranked_candidates[:5] if ranked_candidates else []
+        ranked_candidates = sorted(eval_result.pareto_candidates, key=candidate_sort_key)
+        top_candidates = ranked_candidates[:5] if ranked_candidates else []
 
     # -------------------------------------------------------------
     # Step 8: Empirical Monte Carlo Uncertainty Simulation
@@ -757,5 +776,5 @@ def run_planning_pipeline(
         mesh_exports=mesh_exports,
         report_pdf_path=pdf_path,
         output_dir=out_path,
-        status="SUCCESS"
+        status=plan_exec_status
     )
