@@ -1,0 +1,30 @@
+# Core DICOM & Medical Imaging
+pydicom>=2.4.0
+SimpleITK>=2.3.0
+nibabel>=5.1.0
+
+# Scientific & Geometry
+numpy>=1.24.0
+scipy>=1.10.0
+scikit-image>=0.21.0
+trimesh>=4.0.0
+rtree>=1.0.0
+shapely>=2.0.0
+
+# PyTorch (Optional for heavy deep learning, CPU fallback supported)
+torch>=2.1.0
+
+# Web API & Configuration
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.4.0
+pyyaml>=6.0.1
+
+# Reporting & Visualization
+reportlab>=4.0.0
+matplotlib>=3.8.0
+
+# Testing & Quality Assurance
+pytest>=7.4.0
+pytest-cov>=4.1.0
+hypothesis>=6.80.0
