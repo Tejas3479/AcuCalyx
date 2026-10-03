@@ -37,6 +37,7 @@ from acucalyx.fluoroscopy.virtual_contrast import (
     apply_virtual_contrast_to_volume,
 )
 from acucalyx.geometry.transforms import LineSegment3D
+from acucalyx.ingestion.dicom import load_dicom_series
 from acucalyx.ingestion.nifti import load_research_nifti
 
 router = APIRouter(prefix="/api/cases/{case_id}/drr", tags=["Fluoroscopy DRR"])
@@ -64,9 +65,31 @@ def _load_case_data_and_candidate(case_id: str, candidate_id: str):
         raise HTTPException(status_code=404, detail=f"Candidate {candidate_id} not found.")
 
     input_path = Path(meta["input_path"])
-    nii_res = load_research_nifti(input_path)
-    volume = nii_res.volume_hu
-    spatial = nii_res.spatial_orientation
+    
+    # Check if active volume cache from main module has this case
+    try:
+        from app.api.main import get_cached_volume, set_cached_volume
+        cached = get_cached_volume(case_id)
+    except Exception:
+        cached = None
+
+    if cached is not None:
+        volume = cached["volume"]
+        spatial = cached["spatial"]
+    else:
+        if input_path.is_dir():
+            dcm_res = load_dicom_series(input_path)
+            volume = dcm_res.volume_hu
+            spatial = dcm_res.spatial_orientation
+        else:
+            nii_res = load_research_nifti(input_path)
+            volume = nii_res.volume_hu
+            spatial = nii_res.spatial_orientation
+        try:
+            from app.api.main import set_cached_volume
+            set_cached_volume(case_id, volume, spatial)
+        except Exception:
+            pass
 
     entry = np.array(cand["entry_point_lps"], dtype=np.float64)
     target = np.array(cand["target_point_lps"], dtype=np.float64)
