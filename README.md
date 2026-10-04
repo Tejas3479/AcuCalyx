@@ -335,6 +335,17 @@ AcuCalyx/
 
 ---
 
+## 👥 Contributing & Team Collaboration
+
+We welcome contributions from clinical researchers, software engineers, and biomedical data scientists.
+Please review our [**Contributing Guidelines (CONTRIBUTING.md)**](CONTRIBUTING.md) for details on:
+* **Zero-PHI Compliance:** Strict prohibition of raw patient data and enforcement of DICOM PS 3.15 de-identification
+* **Collaboration Workflows:** Branch & PR workflow for teammates and Fork & PR workflow for community contributors
+* **Commit Standards:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`)
+* **Quality Gates:** 100% pass requirement on the 199-test suite (`pytest tests/unit tests/golden tests/integration tests/property`)
+
+---
+
 ## ⚖️ Investigational Device Disclaimer
 
 > **CAUTION — Investigational Device.**  
