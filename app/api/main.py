@@ -914,6 +914,10 @@ app.include_router(rehearsal_router)
 from app.api.routes_usability import router as usability_router
 app.include_router(usability_router)
 
+# Mount Multimodal Ultrasound & Positioning Uncertainty Routes (Milestone M14)
+from app.api.routes_ultrasound import router as ultrasound_router
+app.include_router(ultrasound_router)
+
 # Mount Frontend UI Static Files
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
