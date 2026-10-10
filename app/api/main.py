@@ -918,6 +918,10 @@ app.include_router(usability_router)
 from app.api.routes_ultrasound import router as ultrasound_router
 app.include_router(ultrasound_router)
 
+# Mount Endoscopic Reachability & Computed Endoluminal Rehearsal Routes (Milestone M15)
+from app.api.routes_endoscopy import router as endoscopy_router
+app.include_router(endoscopy_router)
+
 # Mount Frontend UI Static Files
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
