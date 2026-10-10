@@ -116,18 +116,35 @@ All uploaded DICOM series are scrubbed at the point of ingestion:
 * **Interlock U4:** Sterile C-Arm Technologist Communication Card with exact verbal readback scripts.
 * **Interlock U5:** Medial calyceal wall proximity alarm preventing counter-puncture vascular injury.
 
+### 8. Multimodal Simulated B-Mode Ultrasound & Operative Positioning Uncertainty (M14)
+* **Simulated B-Mode Ultrasound Renderer:** Synthesizes realistic 2D ultrasound frames from 3D CT attenuation volumes via calibrated acoustic impedance ($Z = \rho c$), multi-layer Rayleigh speckle noise, stone posterior acoustic shadowing cones, and calyceal fluid distal acoustic enhancement.
+* **Needle Acoustic Visibility Index (NAVI):** Quantifies needle echogenicity based on specular beam-axis incidence angle ($\theta_i$), probe elevation slice thickness drop-off, and cannula acoustic impedance.
+* **Flank Acoustic Window Planner:** Analyzes intercostal rib corridor occlusion %, pleural reflection clearance, skin contact conformance %, and target calyx visibility to output procedural probe tilt recommendations.
+* **Stratified Operative Positioning Covariance:** Models organ displacement under prone/supine/oblique positions, body habitus (Normal vs Obese BMI $\ge 35$), mechanical ventilation tidal excursion vs end-expiratory apnea clamping, and probe contact pressure.
+* **Monte Carlo Clearance Interlock:** Evaluates 2,000 stochastic perturbation draws against colon, spleen, pleura, and intercostal bundles with a mandatory fail-closed interlock if clearance probability drops below $95.0\%$.
+
+### 9. Flexible Nephroscope Kinematic Reachability & Endoluminal Rehearsal (M15)
+* **Continuous Caliceal Morphometry & Medial Axis Graph:** Extracts 3D topological centerline skeletons, infundibulopelvic angles (IPA), infundibular lengths ($L_{\text{inf}}$), and narrowest neck diameters ($D_{\text{inf}}$) using Frenet-Serret curvature frames.
+* **Calibrated Instrument Registry:** Real-world physical profiles for standard rigid nephroscopes (Karl Storz 26 Fr, Olympus 24 Fr) and flexible ureterorenoscopes/nephroscopes (Boston Scientific LithoVue, Olympus URF-V, Karl Storz Flex-Xc) modeling secondary active deflection and empirical tool-loaded deflection degradation ($\Delta \theta \approx -18^\circ$ with laser fiber/basket).
+* **Multi-Calyx Stone Access Coverage:** Geometric line-of-sight and reachability solver predicting single-tract stone clearance percentage, secondary calyx accessibility, and torquing stress thresholds on renal parenchyma.
+* **Descriptive Access Caliber Profiles:** Evaluates standard PCNL (24–30 Fr) vs. Mini-PCNL (12–16 Fr) vs. Micro-PCNL (4.8–8 Fr) sheath profiles against estimated intra-renal pressure (IRP) and operative irrigation flow dynamics.
+* **Open Medical Image Integrations:** Native TotalSegmentator v2 multi-organ segmentation adapter, nnU-Net v2 container pipeline, and 3D Slicer / MONAI Label client bridge.
+
 ---
 
 ## 🖥️ Interactive 3D Rehearsal Cockpit
 
-The web interface combines high-performance WebGL 3D rendering with synchronized 2D multi-planar CT imaging:
+The web interface combines high-performance WebGL 3D rendering with synchronized 2D multi-planar CT imaging and real-time multimodal ultrasound / fluoroscopy simulation:
 
 * **Three.js PBR Shaders:** Translucent renal cortex cutaway, ivory-gold crystalline calculi, vascular trees, skeletal ribs, and color-coded needle access corridors.
 * **Synchronized 2D MPR Viewer:** Real-time Axial, Coronal, and Sagittal slice rendering with window/level presets (Soft Tissue, Bone, Kidney) and physical LPS cursor reticles.
+* **Multimodal Tri-View Cockpit:** Synchronized side-by-side display of 3D anatomical cutaways, C-arm fluoroscopy DRR projection, and live simulated B-mode ultrasound.
 * **Multi-Theme Support:** Clinical Dark, Standard Light, and Hybrid Ergonomic themes.
 
 | Viewport | Screenshot Preview |
 | :---: | :---: |
+| **Multimodal Ultrasound Cockpit (M14)** | ![Multimodal Ultrasound](./view_m14_multimodal_cockpit.png) |
+| **Tri-View Rehearsal Cockpit (3D + Fluro + US)** | ![Tri-View Cockpit](./view_m14_triview_cockpit.png) |
 | **Dual-Monitor Rehearsal Cockpit** | ![Cockpit](./view_m13_rehearsal_cockpit.png) |
 | **Pareto Candidate Access Trajectories** | ![Candidates](./view_candidates_rendered.png) |
 | **Default Anatomical Cutaway** | ![Default Fixed](./view_default_fixed.png) |
@@ -187,12 +204,15 @@ AcuCalyx maintains a comprehensive, automated test suite spanning unit tests, cl
 python -m pytest tests/unit tests/golden tests/integration tests/property
 ```
 
-### Test Suite Structure (199 Tests, 100% Passing):
-* **Unit Tests (175 tests):**
-  * Geometry & Coordinates (`test_coordinates.py`, `test_volumetry.py`)
+### Test Suite Structure (240 Tests, 100% Passing):
+* **Unit Tests (216 tests):**
+  * Geometry, Coordinates & SimpleITK (`test_coordinates.py`, `test_volumetry.py`)
   * DICOM & NIfTI Ingestion (`test_dicom_ingestion.py`, `test_nifti_ingestion.py`, `test_quality_gate.py`)
   * Trajectory Corridors & Optimization (`test_planning_corridors.py`, `test_pareto.py`, `test_m12_pareto_planning.py`)
   * Virtual Fluoroscopy & DRR (`test_projection.py`, `test_drr_geometry.py`, `test_drr_advanced.py`, `test_m13_virtual_fluoroscopy.py`, `test_m13p_projection_metrology.py`)
+  * Multimodal Ultrasound Simulation (`test_m14_ultrasound_simulation.py`)
+  * Endoscopy Reachability & Kinematics (`test_m15_endoscopy_reachability.py`)
+  * Integrations & External ML Pipelines (`test_m15_integrations.py`)
   * Usability & Safety Interlocks (`test_hazard_engine.py`, `test_usability_engine.py`, `test_phase45_calibration.py`)
   * Regulatory, SBOM & PHI Guard (`test_regulatory_and_cybersecurity.py`, `test_premarket_submission_and_release.py`)
 * **Golden Challenge Cases (19 tests):**
@@ -282,15 +302,19 @@ AcuCalyx/
 │   ├── collecting_system/             # Calyceal infundibular visibility gating
 │   ├── cybersecurity/                 # PHIGuard (PS 3.15), STRIDE threat model, SBOM
 │   ├── dicom/                         # DICOM PS 3.2 conformance test harness
+│   ├── data/                          # Dataset catalog and trusted research registry
+│   ├── endoscopy/                     # Flexible/rigid scope kinematics, reachability & morphometry
 │   ├── fluoroscopy/                   # C-arm kinematics, DRR raymarcher, ALARA metrics
-│   ├── geometry/                      # Coordinates, transforms, SDF, mesh decimation
+│   ├── geometry/                      # Coordinates, transforms, SimpleITK bridge, SDF
 │   ├── ingestion/                     # DICOM / NIfTI loaders and quality gate
+│   ├── integrations/                  # TotalSegmentator v2, nnU-Net pipeline, Slicer/MONAI bridge
 │   ├── phantom/                       # Physical 3D printable phantom & mold generator
 │   ├── planning/                      # 3-tier Pareto optimizer, scope kinematics, reach
 │   ├── regulatory/                    # ISO 14971 safety boundaries, plan integrity
 │   ├── reports/                       # ReportLab PDF surgical planning report generator
 │   ├── research/                      # Human factors, NASA-TLX, task analysis
 │   ├── stones/                        # Calculus candidate detection, volumetry, scoring
+│   ├── ultrasound/                    # Multimodal B-mode simulator, NAVI, covariance, acoustic window
 │   ├── uncertainty/                   # Monte Carlo motion perturbation and risk scoring
 │   ├── usability/                     # OR surgical protocols and safety interlocks
 │   ├── validation/                    # ASTM F2554 procedural validation & Clopper-Pearson
@@ -309,12 +333,12 @@ AcuCalyx/
 │   ├── mdf_indexer.py                 # Medical Device File (MDF) automated indexer
 │   └── pms_analyzer.py                # Postmarket complaint trend & signal detector
 │
-├── tests/                             # Verification & Test Suite (199 Tests)
+├── tests/                             # Verification & Test Suite (240 Tests)
 │   ├── golden/                        # 19 clinical challenge cases & expert validation
 │   ├── integration/                   # Full end-to-end pipeline execution test
 │   ├── phantom/                       # Synthetic CT phantom generator fixture
 │   ├── property/                      # Mathematical invariants (SE(3), SDF, Pareto)
-│   └── unit/                          # 175 unit tests across all submodules
+│   └── unit/                          # 216 unit tests across all submodules
 │
 └── data/                              # Anatomical reference meshes & sample models
     ├── anatomical_preview/            # High-resolution 3D GLB renal structures
@@ -342,7 +366,7 @@ Please review our [**Contributing Guidelines (CONTRIBUTING.md)**](CONTRIBUTING.m
 * **Zero-PHI Compliance:** Strict prohibition of raw patient data and enforcement of DICOM PS 3.15 de-identification
 * **Collaboration Workflows:** Branch & PR workflow for teammates and Fork & PR workflow for community contributors
 * **Commit Standards:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`)
-* **Quality Gates:** 100% pass requirement on the 199-test suite (`pytest tests/unit tests/golden tests/integration tests/property`)
+* **Quality Gates:** 100% pass requirement on the 240-test suite (`pytest tests/unit tests/golden tests/integration tests/property`)
 
 ---
 

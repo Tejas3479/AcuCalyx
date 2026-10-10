@@ -99,7 +99,7 @@ Depending on your access level, choose the appropriate contribution model:
    ```bash
    python -m pytest tests/unit tests/golden tests/integration tests/property
    ```
-   *(All 199 tests should pass).*
+   *(All 240 tests should pass).*
 
 4. **Start the Development Server:**
    ```bash
@@ -159,6 +159,9 @@ We adhere to the [Conventional Commits 1.0.0](https://www.conventionalcommits.or
 * `planning`: Needle trajectory corridors & Pareto optimizer (`src/acucalyx/planning/`)
 * `hazards`: Critical organ collision & hazard engines (`src/acucalyx/hazards/`)
 * `drr`: Virtual fluoroscopy & DRR projection simulation (`src/acucalyx/drr/`)
+* `ultrasound`: Multimodal B-mode ultrasound, NAVI & covariance (`src/acucalyx/ultrasound/`)
+* `endoscopy`: Flexible/rigid scope kinematics & reachability (`src/acucalyx/endoscopy/`)
+* `integrations`: TotalSegmentator, nnU-Net, Slicer bridges (`src/acucalyx/integrations/`)
 * `api`: FastAPI backend endpoints & middleware (`app/api/`)
 * `frontend`: HTML5, Three.js 3D viewport, MPR viewer (`app/frontend/`)
 * `coords`: Physical LPS coordinate transformations (`src/acucalyx/coordinates.py`)
@@ -176,7 +179,7 @@ docs(readme): document clinical interlocks and dual-monitor cockpit controls
 
 ## 6. Testing & Quality Verification Gates
 
-AcuCalyx enforces a zero-regression policy. **All 199 tests must pass** prior to any merge into `main`.
+AcuCalyx enforces a zero-regression policy. **All 240 tests must pass** prior to any merge into `main`.
 
 ### Running Tests
 
@@ -196,7 +199,7 @@ python -m pytest --cov=src/acucalyx tests/unit
 ```
 
 ### Test Suite Structure
-1. **Unit Tests (`tests/unit/` - 175 tests):** Validate single-function invariants, coordinates, DICOM parsers, and hazard calculators in isolation.
+1. **Unit Tests (`tests/unit/` - 216 tests):** Validate single-function invariants, coordinates, DICOM parsers, ultrasound simulation, endoscopic reachability, and hazard calculators in isolation.
 2. **Golden Challenge Cases (`tests/golden/` - 19 tests):** Stress-test planning algorithms against complex anatomical scenarios (e.g., retrorenal colon, staghorn calculus, severe hydronephrosis).
 3. **Property-Based Invariants (`tests/property/` - 4 tests):** Use Hypothesis to fuzz continuous coordinate transformations and SE(3) distance invariances across edge cases.
 4. **Procedural Integration (`tests/integration/` - 1 test):** Validates the entire pipeline from phantom generation through stone volumetry, Pareto optimization, DRR fluoroscopy, and PDF generation.
