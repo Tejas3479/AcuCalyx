@@ -47,6 +47,7 @@ from acucalyx.endoscopy.tract_sizing import (
 )
 from acucalyx.endoscopy.skeletonizer import (
     build_procedural_collecting_system_graph,
+    CollectingSystemGraph,
 )
 
 client = TestClient(app)
@@ -274,3 +275,88 @@ class TestM1501EvidenceGateAcceptance:
         assert data["status"] == "NOT_EVALUABLE"
         assert data["overall_gate_passed"] is False
         assert data["inter_rater_reliability"] is None
+
+    def test_check_11_patient_graph_serialization_roundtrip(self, tmp_path):
+        """Check 11: CollectingSystemGraph JSON serialization and deserialization integrity."""
+        graph = build_procedural_collecting_system_graph(case_id="TEST_CASE_SERIALIZE")
+        save_path = tmp_path / "graph.json"
+        graph.save_to_json(save_path)
+        assert save_path.is_file()
+
+        loaded = CollectingSystemGraph.load_from_json(save_path)
+        assert loaded.case_id == "TEST_CASE_SERIALIZE"
+        assert len(loaded.nodes) == len(graph.nodes)
+        assert len(loaded.edges) == len(graph.edges)
+        assert len(loaded.calyces) == len(graph.calyces)
+        for cid, calyx in graph.calyces.items():
+            assert cid in loaded.calyces
+            assert pytest.approx(loaded.calyces[cid].infundibulopelvic_angle_deg, 1e-4) == calyx.infundibulopelvic_angle_deg
+            assert pytest.approx(loaded.calyces[cid].infundibular_width_min_mm, 1e-4) == calyx.infundibular_width_min_mm
+
+    def test_check_12_validation_gate_with_manifest_file(self, tmp_path):
+        """Check 12: evaluate_m15_validation_gate() loads and evaluates locked manifest."""
+        data = generate_synthetic_m15v_test_data()
+        manifest_data = {
+            "manifest_version": "1.0",
+            "dataset_identifier": "DATASET_M15_TEST",
+            "ipa_pred": data["ipa_pred"].tolist(),
+            "ipa_ref": data["ipa_ref"].tolist(),
+            "iw_pred": data["iw_pred"].tolist(),
+            "iw_ref": data["iw_ref"].tolist(),
+            "class_pred": [bool(x) for x in data["class_pred"]],
+            "class_ref": [bool(x) for x in data["class_ref"]],
+            "multi_expert_ratings": data["multi_expert_ratings"].tolist(),
+            "phantom_measurements": data["phantom_measurements"],
+        }
+        manifest_file = tmp_path / "m15v_manifest.json"
+        with open(manifest_file, "w", encoding="utf-8") as f:
+            json.dump(manifest_data, f, indent=2)
+
+        report = evaluate_m15_validation_gate(manifest_path=manifest_file)
+        assert report.status == "PASS_FOR_NONCLINICAL_RESEARCH"
+        assert report.overall_gate_passed is True
+
+        # Nonexistent manifest fails closed
+        report_missing = evaluate_m15_validation_gate(manifest_path=tmp_path / "nonexistent.json")
+        assert report_missing.status == "NOT_EVALUABLE"
+        assert report_missing.overall_gate_passed is False
+
+    def test_check_13_phantom_measurements_missing_fails_closed(self):
+        """Check 13: Omitting phantom_measurements fails closed (zero synthetic fallback)."""
+        data = generate_synthetic_m15v_test_data()
+        data["phantom_measurements"] = None
+        report = evaluate_m15_validation_gate(**data)
+        assert report.status == "NOT_EVALUABLE"
+        assert report.overall_gate_passed is False
+        assert "missing real reference" in report.summary_findings
+
+    def test_check_14_pipeline_totalsegmentator_provider_execution(self, tmp_path):
+        """Check 14: run_planning_pipeline supports TotalSegmentator provider and clinical mode."""
+        import nibabel as nib
+        data = np.zeros((20, 20, 20), dtype=np.int16)
+        data[5:15, 5:15, 5:15] = 200
+        nii = nib.Nifti1Image(data, np.diag([1.0, 1.0, 1.0, 1.0]))
+        scan_p = tmp_path / "scan.nii.gz"
+        nib.save(nii, str(scan_p))
+
+        # 1. TotalSegmentator provider in demo mode runs with synthetic fallback
+        res = run_planning_pipeline(
+            input_path=scan_p,
+            output_dir=tmp_path / "out_ts",
+            side="right",
+            segmentation_method="TOTALSEGMENTATOR",
+            config={"demo_mode": True},
+        )
+        assert res.quality_gate.passed is True
+        assert res.status != "GATE_REJECTED"
+        assert res.status in ("SUCCESS", "NO_PLAN_CRITICAL_HAZARD")
+
+        # 2. Strict clinical mode without native model fails closed
+        with pytest.raises(ValueError, match="Clinical segmentation failed"):
+            run_planning_pipeline(
+                input_path=scan_p,
+                output_dir=tmp_path / "out_ts_strict",
+                side="right",
+                segmentation_method="TOTALSEGMENTATOR",
+                config={"demo_mode": False, "require_clinical_segmentation": True}
+            )

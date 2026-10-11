@@ -11,8 +11,10 @@ Features:
 """
 
 from dataclasses import dataclass, field
+import json
 import math
-from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 
@@ -23,6 +25,23 @@ class CenterlineNode:
     position_lps_mm: np.ndarray  # [x, y, z] in LPS coordinates
     node_type: str               # "APEX", "IPJ", "PELVIS", "UPJ", "BRANCH"
     calyx_group: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "node_id": self.node_id,
+            "position_lps_mm": self.position_lps_mm.tolist(),
+            "node_type": self.node_type,
+            "calyx_group": self.calyx_group,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CenterlineNode":
+        return cls(
+            node_id=str(d["node_id"]),
+            position_lps_mm=np.asarray(d["position_lps_mm"], dtype=float),
+            node_type=str(d["node_type"]),
+            calyx_group=d.get("calyx_group"),
+        )
 
 
 @dataclass(frozen=True)
@@ -40,6 +59,37 @@ class CrossSectionalGeometry:
     curvature: float
     torsion: float
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "arc_length_s": float(self.arc_length_s),
+            "centroid_lps_mm": self.centroid_lps_mm.tolist(),
+            "cross_sectional_area_mm2": float(self.cross_sectional_area_mm2),
+            "min_feret_diameter_mm": float(self.min_feret_diameter_mm),
+            "max_feret_diameter_mm": float(self.max_feret_diameter_mm),
+            "eccentricity": float(self.eccentricity),
+            "tangent_vector": self.tangent_vector.tolist(),
+            "normal_vector": self.normal_vector.tolist(),
+            "binormal_vector": self.binormal_vector.tolist(),
+            "curvature": float(self.curvature),
+            "torsion": float(self.torsion),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CrossSectionalGeometry":
+        return cls(
+            arc_length_s=float(d["arc_length_s"]),
+            centroid_lps_mm=np.asarray(d["centroid_lps_mm"], dtype=float),
+            cross_sectional_area_mm2=float(d["cross_sectional_area_mm2"]),
+            min_feret_diameter_mm=float(d["min_feret_diameter_mm"]),
+            max_feret_diameter_mm=float(d["max_feret_diameter_mm"]),
+            eccentricity=float(d["eccentricity"]),
+            tangent_vector=np.asarray(d["tangent_vector"], dtype=float),
+            normal_vector=np.asarray(d["normal_vector"], dtype=float),
+            binormal_vector=np.asarray(d["binormal_vector"], dtype=float),
+            curvature=float(d["curvature"]),
+            torsion=float(d["torsion"]),
+        )
+
 
 @dataclass(frozen=True)
 class CenterlineEdge:
@@ -54,6 +104,35 @@ class CenterlineEdge:
     min_feret_diameter_mm: float
     mean_feret_diameter_mm: float
     max_curvature: float
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "edge_id": self.edge_id,
+            "start_node_id": self.start_node_id,
+            "end_node_id": self.end_node_id,
+            "points_lps_mm": self.points_lps_mm.tolist(),
+            "arc_lengths_mm": self.arc_lengths_mm.tolist(),
+            "total_length_mm": float(self.total_length_mm),
+            "cross_sections": [cs.to_dict() for cs in self.cross_sections],
+            "min_feret_diameter_mm": float(self.min_feret_diameter_mm),
+            "mean_feret_diameter_mm": float(self.mean_feret_diameter_mm),
+            "max_curvature": float(self.max_curvature),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CenterlineEdge":
+        return cls(
+            edge_id=str(d["edge_id"]),
+            start_node_id=str(d["start_node_id"]),
+            end_node_id=str(d["end_node_id"]),
+            points_lps_mm=np.asarray(d["points_lps_mm"], dtype=float),
+            arc_lengths_mm=np.asarray(d["arc_lengths_mm"], dtype=float),
+            total_length_mm=float(d["total_length_mm"]),
+            cross_sections=[CrossSectionalGeometry.from_dict(cs) for cs in d.get("cross_sections", [])],
+            min_feret_diameter_mm=float(d["min_feret_diameter_mm"]),
+            mean_feret_diameter_mm=float(d["mean_feret_diameter_mm"]),
+            max_curvature=float(d["max_curvature"]),
+        )
 
 
 @dataclass(frozen=True)
@@ -71,6 +150,37 @@ class CalyxMorphometry:
     max_curvature: float                # Maximum curvature along infundibulum
     visibility_state: str = "DIRECT"    # DIRECT, PARTIAL, ESTIMATED, UNAVAILABLE
 
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "calyx_id": self.calyx_id,
+            "apex_node_id": self.apex_node_id,
+            "ipj_node_id": self.ipj_node_id,
+            "calyx_group": self.calyx_group,
+            "infundibulopelvic_angle_deg": float(self.infundibulopelvic_angle_deg),
+            "infundibular_length_mm": float(self.infundibular_length_mm),
+            "infundibular_width_min_mm": float(self.infundibular_width_min_mm),
+            "infundibular_width_mean_mm": float(self.infundibular_width_mean_mm),
+            "mean_eccentricity": float(self.mean_eccentricity),
+            "max_curvature": float(self.max_curvature),
+            "visibility_state": self.visibility_state,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CalyxMorphometry":
+        return cls(
+            calyx_id=str(d["calyx_id"]),
+            apex_node_id=str(d["apex_node_id"]),
+            ipj_node_id=str(d["ipj_node_id"]),
+            calyx_group=str(d["calyx_group"]),
+            infundibulopelvic_angle_deg=float(d["infundibulopelvic_angle_deg"]),
+            infundibular_length_mm=float(d["infundibular_length_mm"]),
+            infundibular_width_min_mm=float(d["infundibular_width_min_mm"]),
+            infundibular_width_mean_mm=float(d["infundibular_width_mean_mm"]),
+            mean_eccentricity=float(d["mean_eccentricity"]),
+            max_curvature=float(d["max_curvature"]),
+            visibility_state=d.get("visibility_state", "DIRECT"),
+        )
+
 
 @dataclass
 class CollectingSystemGraph:
@@ -82,6 +192,56 @@ class CollectingSystemGraph:
     pelvis_bounding_box: Tuple[np.ndarray, np.ndarray]  # (min_xyz, max_xyz)
     pelvis_center_lps_mm: np.ndarray
     upj_position_lps_mm: np.ndarray
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "schema_version": "1.0",
+            "case_id": self.case_id,
+            "nodes": {k: v.to_dict() for k, v in self.nodes.items()},
+            "edges": {k: v.to_dict() for k, v in self.edges.items()},
+            "calyces": {k: v.to_dict() for k, v in self.calyces.items()},
+            "pelvis_bounding_box": [
+                self.pelvis_bounding_box[0].tolist(),
+                self.pelvis_bounding_box[1].tolist(),
+            ],
+            "pelvis_center_lps_mm": self.pelvis_center_lps_mm.tolist(),
+            "upj_position_lps_mm": self.upj_position_lps_mm.tolist(),
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "CollectingSystemGraph":
+        nodes = {k: CenterlineNode.from_dict(v) for k, v in d.get("nodes", {}).items()}
+        edges = {k: CenterlineEdge.from_dict(v) for k, v in d.get("edges", {}).items()}
+        calyces = {k: CalyxMorphometry.from_dict(v) for k, v in d.get("calyces", {}).items()}
+        bbox_raw = d.get("pelvis_bounding_box", [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]])
+        bbox = (np.asarray(bbox_raw[0], dtype=float), np.asarray(bbox_raw[1], dtype=float))
+        pelvis_center = np.asarray(d.get("pelvis_center_lps_mm", [0.0, 0.0, 0.0]), dtype=float)
+        upj_pos = np.asarray(d.get("upj_position_lps_mm", [0.0, 0.0, 0.0]), dtype=float)
+
+        return cls(
+            case_id=str(d.get("case_id", "UNKNOWN")),
+            nodes=nodes,
+            edges=edges,
+            calyces=calyces,
+            pelvis_bounding_box=bbox,
+            pelvis_center_lps_mm=pelvis_center,
+            upj_position_lps_mm=upj_pos,
+        )
+
+    def save_to_json(self, file_path: Union[str, Path]) -> None:
+        p = Path(file_path)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(self.to_dict(), f, indent=2)
+
+    @classmethod
+    def load_from_json(cls, file_path: Union[str, Path]) -> "CollectingSystemGraph":
+        p = Path(file_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Collecting system graph file not found: {file_path}")
+        with open(p, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return cls.from_dict(data)
 
     def get_path_points(self, start_calyx_id: str, target_calyx_id: str) -> np.ndarray:
         """
@@ -116,6 +276,16 @@ class CollectingSystemGraph:
         pelvis_bridge = (1.0 - t_vals)**2 * p_ipj_in + 2.0 * (1.0 - t_vals) * t_vals * mid_pelvis + t_vals**2 * p_ipj_out
 
         return np.vstack([pts_in, pelvis_bridge, pts_out])
+
+
+def save_collecting_system_graph(graph: CollectingSystemGraph, file_path: Union[str, Path]) -> None:
+    """Saves CollectingSystemGraph to JSON file."""
+    graph.save_to_json(file_path)
+
+
+def load_collecting_system_graph(file_path: Union[str, Path]) -> CollectingSystemGraph:
+    """Loads CollectingSystemGraph from JSON file."""
+    return CollectingSystemGraph.load_from_json(file_path)
 
 
 # -----------------------------------------------------------------------------

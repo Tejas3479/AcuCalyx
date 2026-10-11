@@ -1,8 +1,8 @@
 """
-AcuCalyx Endoscopy: Validated Clinical Endoscopic Instrument Registry & M15.0 Reference Phantoms
-Governed by ACU-M15-EXEC-PLAN-2026-V2 (Milestone M15.0).
+AcuCalyx Endoscopy: Empirical Clinical Endoscopic Instrument Registry & M15.0 Reference Phantoms
+Governed by ACU-M15-EXEC-PLAN-2026-V3 (Milestone M15.0).
 
-Replaces generic hardcoded scope assumptions with a certified registry of commercial
+Replaces generic hardcoded scope assumptions with a structured registry of commercial
 urological instruments grounded in manufacturer Instructions for Use (IFU) specifications
 and bench-measured empirical tool-loaded deflection data.
 """
@@ -31,7 +31,7 @@ class WorkingChannelTool(str, Enum):
 @dataclass(frozen=True)
 class ValidatedEndoscopeProfile:
     """
-    Certified mechanical and optical profile of a commercial urological endoscope.
+    Empirical mechanical and optical profile of a commercial urological endoscope.
     Parameters derived directly from manufacturer IFU technical sheets and empirical bench testing.
     """
     model_id: str
@@ -56,6 +56,7 @@ class ValidatedEndoscopeProfile:
     tool_loaded_deflection_deg: Dict[WorkingChannelTool, Tuple[float, float]]
     access_sheath_compatibility_fr_min: float
     ifu_document_reference: str
+    verification_status: str = "MANUFACTURER_SPECIFIED"  # "BENCH_MEASURED", "MANUFACTURER_SPECIFIED", "UNVERIFIED"
 
     @property
     def is_flexible(self) -> bool:
@@ -108,6 +109,7 @@ KARL_STORZ_27002BA = ValidatedEndoscopeProfile(
     },
     access_sheath_compatibility_fr_min=26.0,
     ifu_document_reference="Karl Storz IFU 27002BA Rev 2024 (PCNL Rigid Instruments)",
+    verification_status="MANUFACTURER_SPECIFIED",
 )
 
 KARL_STORZ_MIP_27092 = ValidatedEndoscopeProfile(
@@ -137,6 +139,7 @@ KARL_STORZ_MIP_27092 = ValidatedEndoscopeProfile(
     },
     access_sheath_compatibility_fr_min=16.5,
     ifu_document_reference="Karl Storz Minimally Invasive PCNL (MIP) System IFU 2024",
+    verification_status="MANUFACTURER_SPECIFIED",
 )
 
 OLYMPUS_URF_V3 = ValidatedEndoscopeProfile(
@@ -166,6 +169,7 @@ OLYMPUS_URF_V3 = ValidatedEndoscopeProfile(
     },
     access_sheath_compatibility_fr_min=10.0,
     ifu_document_reference="Olympus URF-V3 Technical Specification & Endourology Bench Report 2025",
+    verification_status="BENCH_MEASURED",
 )
 
 BOSTON_SCI_LITHOVUE = ValidatedEndoscopeProfile(
@@ -195,6 +199,7 @@ BOSTON_SCI_LITHOVUE = ValidatedEndoscopeProfile(
     },
     access_sheath_compatibility_fr_min=9.5,
     ifu_document_reference="Boston Scientific LithoVue System IFU 91090123-01 & Deflection Kinematics Study",
+    verification_status="BENCH_MEASURED",
 )
 
 STANDARD_ENDOSCOPES: Dict[str, ValidatedEndoscopeProfile] = {

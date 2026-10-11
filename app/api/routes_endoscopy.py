@@ -67,9 +67,13 @@ def _get_case_graph(case_id: str, demo_mode: bool = False) -> CollectingSystemGr
     graph_path = CASES_DIR / case_id / "artifacts" / "graph.json"
     if graph_path.is_file():
         try:
-            pass  # Future persisted patient-specific graph loading
-        except Exception:
-            pass
+            return CollectingSystemGraph.load_from_json(graph_path)
+        except Exception as err:
+            if not demo_mode:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Patient collecting-system graph for case '{case_id}' failed to load: {err}"
+                )
 
     if not demo_mode:
         raise HTTPException(
@@ -590,9 +594,12 @@ async def get_endoluminal_rehearsal_flythrough(
 
 
 @router.get("/{case_id}/endoscopy/validation-gate")
-async def get_m15_validation_gate_report(case_id: str) -> Dict[str, Any]:
+async def get_m15_validation_gate_report(
+    case_id: str,
+    manifest_path: Optional[str] = Query(None, description="Optional path to locked reference manifest JSON")
+) -> Dict[str, Any]:
     """Milestone M15-V agreement, calibration, and physical concordance report."""
-    report = evaluate_m15_validation_gate()
+    report = evaluate_m15_validation_gate(manifest_path=manifest_path)
     ipa_dict = None
     if report.ipa_validation:
         ipa_dict = {

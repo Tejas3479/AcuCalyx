@@ -10,8 +10,10 @@ Replaces Pearson correlation (r ≥ 0.88) and ASTM F2554-22 overclaims with rigo
 """
 
 from dataclasses import dataclass, field
+import json
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 
 from acucalyx.endoscopy.instrument_registry import (
@@ -81,9 +83,9 @@ class PhysicalPhantomConcordanceResult:
 
 @dataclass
 class M15ValidationGateReport:
-    """Comprehensive Milestone M15-V Certification Gate Report."""
+    """Comprehensive Milestone M15-V Nonclinical Preoperative Evidence Gate Report."""
     gate_identifier: str = "ACU-M15-V-GATE-2026"
-    status: str = "NOT_EVALUABLE"  # "APPROVED / FROZEN", "REJECTED", "NOT_EVALUABLE"
+    status: str = "NOT_EVALUABLE"  # "PASS_FOR_NONCLINICAL_RESEARCH", "FAIL_CRITERIA_UNMET", "NOT_EVALUABLE"
     ipa_validation: Optional[MorphometryValidationResult] = None
     iw_validation: Optional[MorphometryValidationResult] = None
     classification_metrics: Optional[ReachabilityClassificationMetrics] = None
@@ -296,23 +298,65 @@ def evaluate_m15_validation_gate(
     class_ref: Optional[np.ndarray] = None,
     multi_expert_ratings: Optional[np.ndarray] = None,
     phantom_measurements: Optional[Dict[str, Dict[str, Any]]] = None,
+    manifest_path: Optional[Union[str, Path]] = None,
 ) -> M15ValidationGateReport:
     """
     Executes the comprehensive Milestone M15-V Validation Gate evaluation against
     clinical benchmark thresholds and M15.0 physical phantoms.
 
-    FAILS CLOSED: If real reference or prediction data is not provided, returns
-    status="NOT_EVALUABLE" and overall_gate_passed=False. Automated self-approval
-    with synthetic defaults is strictly prohibited under ISO 13485 / IEC 62304.
+    FAILS CLOSED: If real reference, prediction, or benchtop phantom data is not
+    provided, returns status="NOT_EVALUABLE" and overall_gate_passed=False.
+    Automated self-approval with synthetic defaults is strictly prohibited under
+    nonclinical evidence verification protocols.
     """
     from datetime import datetime, timezone
 
-    # 1. Fail closed if any required clinical arrays are missing
+    # 1. Ingest from locked manifest if provided
+    if manifest_path is not None:
+        m_path = Path(manifest_path)
+        if not m_path.is_file():
+            return M15ValidationGateReport(
+                gate_identifier="ACU-M15-V-GATE-2026",
+                status="NOT_EVALUABLE",
+                overall_gate_passed=False,
+                validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                summary_findings=f"Evaluation blocked: locked reference manifest file not found: {manifest_path}",
+            )
+        try:
+            with open(m_path, "r", encoding="utf-8") as f:
+                m_data = json.load(f)
+            if ipa_pred is None and "ipa_pred" in m_data:
+                ipa_pred = np.asarray(m_data["ipa_pred"], dtype=float)
+            if ipa_ref is None and "ipa_ref" in m_data:
+                ipa_ref = np.asarray(m_data["ipa_ref"], dtype=float)
+            if iw_pred is None and "iw_pred" in m_data:
+                iw_pred = np.asarray(m_data["iw_pred"], dtype=float)
+            if iw_ref is None and "iw_ref" in m_data:
+                iw_ref = np.asarray(m_data["iw_ref"], dtype=float)
+            if class_pred is None and "class_pred" in m_data:
+                class_pred = np.asarray(m_data["class_pred"], dtype=bool)
+            if class_ref is None and "class_ref" in m_data:
+                class_ref = np.asarray(m_data["class_ref"], dtype=bool)
+            if multi_expert_ratings is None and "multi_expert_ratings" in m_data:
+                multi_expert_ratings = np.asarray(m_data["multi_expert_ratings"], dtype=float)
+            if phantom_measurements is None and "phantom_measurements" in m_data:
+                phantom_measurements = m_data["phantom_measurements"]
+        except Exception as err:
+            return M15ValidationGateReport(
+                gate_identifier="ACU-M15-V-GATE-2026",
+                status="NOT_EVALUABLE",
+                overall_gate_passed=False,
+                validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                summary_findings=f"Evaluation blocked: manifest parsing failure ({err}).",
+            )
+
+    # 2. Fail closed if any required clinical arrays or phantom measurements are missing
     if (
         ipa_pred is None or ipa_ref is None or
         iw_pred is None or iw_ref is None or
         class_pred is None or class_ref is None or
-        multi_expert_ratings is None
+        multi_expert_ratings is None or
+        phantom_measurements is None
     ):
         return M15ValidationGateReport(
             gate_identifier="ACU-M15-V-GATE-2026",
@@ -320,55 +364,59 @@ def evaluate_m15_validation_gate(
             overall_gate_passed=False,
             validation_timestamp=datetime.now(timezone.utc).isoformat(),
             summary_findings=(
-                "Evaluation blocked: missing real reference or prediction data from locked manifest. "
-                "Automated self-approval with synthetic defaults is prohibited under ISO 13485 / IEC 62304. "
-                "Ensure versioned adjudicated ground truth and physical phantom measurements are supplied."
+                "Evaluation blocked: missing real reference, prediction, or physical phantom measurements. "
+                "Automated self-approval with synthetic defaults is prohibited under nonclinical evidence standards. "
+                "Ensure versioned adjudicated ground truth and empirical benchtop phantom measurements are supplied."
             ),
         )
 
-    # 2. Continuous Morphometry Agreement
+    # 3. Continuous Morphometry Agreement
     ipa_result = compute_continuous_agreement(ipa_pred, ipa_ref, "Infundibulopelvic Angle (IPA)", mae_threshold=5.0, unit_str="deg")
     iw_result = compute_continuous_agreement(iw_pred, iw_ref, "Infundibular Width (IW)", mae_threshold=0.6, unit_str="mm")
 
-    # 3. Categorical Reachability Classification
+    # 4. Categorical Reachability Classification
     class_result = compute_classification_agreement(class_pred, class_ref, kappa_threshold=0.82)
 
-    # 4. Inter-Rater Reliability
+    # 5. Inter-Rater Reliability
     icc_result = compute_icc_2_1(multi_expert_ratings, param_name="IPA Expert Consistency", icc_threshold=0.80)
 
-    # 5. Physical Phantom Concordance (Evaluates measured vs predicted tolerances)
+    # 6. Physical Phantom Concordance (Evaluates measured vs ground truth tolerances with zero synthetic fallbacks)
     phantom_results: Dict[str, bool] = {}
     total_calyces = 0
     concordant = 0
+    missing_calyces = 0
+
     for pid, phantom in M15_REFERENCE_PHANTOMS.items():
         phantom_calyces_count = 0
         phantom_concordant_count = 0
-        p_meas = phantom_measurements.get(pid, {}) if phantom_measurements else None
+        p_meas = phantom_measurements.get(pid, {}) if phantom_measurements else {}
 
         for cid, calyx in phantom.calyces.items():
             total_calyces += 1
             phantom_calyces_count += 1
             is_truth_acc = calyx.is_flexible_accessible_unloaded
 
-            # If physical measurements supplied, check measured error; otherwise use predicted rule
-            if p_meas and cid in p_meas:
+            # Empirical measurement must be present for this calyx; zero synthetic fallback
+            if cid in p_meas:
                 is_pred_acc = bool(p_meas[cid].get("is_accessible", False))
+                if is_truth_acc == is_pred_acc:
+                    concordant += 1
+                    phantom_concordant_count += 1
             else:
-                is_pred_acc = (calyx.ipa_true_deg >= 30.0) and (calyx.iw_min_true_mm >= 3.5)
+                missing_calyces += 1
 
-            if is_truth_acc == is_pred_acc:
-                concordant += 1
-                phantom_concordant_count += 1
-
-        # Phantom passes ONLY if ALL calyces in that phantom are concordant
-        phantom_results[pid] = (phantom_calyces_count > 0 and phantom_concordant_count == phantom_calyces_count)
+        # Phantom passes ONLY if ALL calyces in that phantom were empirically measured and concordant
+        phantom_results[pid] = (
+            phantom_calyces_count > 0 and
+            phantom_concordant_count == phantom_calyces_count
+        )
 
     phantom_concordance = PhysicalPhantomConcordanceResult(
         total_phantom_calyces=total_calyces,
         concordant_evaluations=concordant,
         critical_discrepancies=total_calyces - concordant,
         concordance_rate_percent=(concordant / max(1, total_calyces)) * 100.0,
-        passed=(total_calyces - concordant == 0 and all(phantom_results.values())),
+        passed=(total_calyces - concordant == 0 and missing_calyces == 0 and all(phantom_results.values())),
         phantom_results=phantom_results,
     )
 
@@ -380,7 +428,7 @@ def evaluate_m15_validation_gate(
         phantom_concordance.passed
     )
 
-    status_str = "APPROVED / FROZEN" if all_passed else "REJECTED"
+    status_str = "PASS_FOR_NONCLINICAL_RESEARCH" if all_passed else "FAIL_CRITERIA_UNMET"
     icc_str = f"{icc_result.icc_value:.3f}" if icc_result.icc_value is not None else "N/A"
     summary = (
         f"Milestone M15-V Gate: {status_str}. "
@@ -388,7 +436,7 @@ def evaluate_m15_validation_gate(
         f"IW MAE: {iw_result.mean_absolute_error:.2f} mm (Limit ≤ 0.6 mm); "
         f"Cohen's κ: {class_result.cohens_kappa:.3f} (Limit ≥ 0.82, Lower 95% CI: {class_result.kappa_ci_lower_95:.3f}); "
         f"ICC(2,1): {icc_str} (Limit ≥ 0.80); "
-        f"Physical Phantom Concordance: {phantom_concordance.concordance_rate_percent:.1f}% (0 critical failures)."
+        f"Physical Phantom Concordance: {phantom_concordance.concordance_rate_percent:.1f}% ({phantom_concordance.critical_discrepancies} discrepancies, {missing_calyces} unmeasured)."
     )
 
     return M15ValidationGateReport(
@@ -405,10 +453,10 @@ def evaluate_m15_validation_gate(
     )
 
 
-def generate_synthetic_m15v_test_data() -> Dict[str, np.ndarray]:
+def generate_synthetic_m15v_test_data() -> Dict[str, Any]:
     """
     Test Fixture Utility ONLY: Generates reproducible synthetic morphometry arrays
-    for unit testing statistical agreement calculators.
+    and simulated bench measurements for unit testing statistical agreement calculators.
     NOT accessible or used by production validation routes.
     """
     np.random.seed(42)
@@ -440,6 +488,16 @@ def generate_synthetic_m15v_test_data() -> Dict[str, np.ndarray]:
     rater3 = base + np.random.normal(-0.1, 2.1, len(base))
     multi_expert_ratings = np.column_stack([rater1, rater2, rater3])
 
+    # Empirical phantom measurements for all M15 reference phantoms
+    phantom_measurements: Dict[str, Dict[str, Any]] = {}
+    for pid, phantom in M15_REFERENCE_PHANTOMS.items():
+        phantom_measurements[pid] = {}
+        for cid, calyx in phantom.calyces.items():
+            phantom_measurements[pid][cid] = {
+                "is_accessible": calyx.is_flexible_accessible_unloaded,
+                "measured_deflection_deg": 270.0,
+            }
+
     return {
         "ipa_pred": ipa_pred,
         "ipa_ref": ipa_ref,
@@ -448,4 +506,5 @@ def generate_synthetic_m15v_test_data() -> Dict[str, np.ndarray]:
         "class_pred": class_pred,
         "class_ref": class_ref,
         "multi_expert_ratings": multi_expert_ratings,
+        "phantom_measurements": phantom_measurements,
     }

@@ -549,7 +549,7 @@ class TestMilestoneM15ValidationGate:
         report = evaluate_m15_validation_gate(**data)
         assert report.gate_identifier == "ACU-M15-V-GATE-2026"
         assert report.overall_gate_passed is True
-        assert report.status == "APPROVED / FROZEN"
+        assert report.status == "PASS_FOR_NONCLINICAL_RESEARCH"
         assert report.ipa_validation.passed is True
         assert report.iw_validation.passed is True
         assert report.classification_metrics.passed is True

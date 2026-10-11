@@ -116,6 +116,27 @@ class TotalSegmentatorAdapter:
         except ImportError:
             return False
 
+    def segment(
+        self,
+        input_volume_path: Union[Path, str, np.ndarray],
+        target_kidney: str = "right",
+        fallback_volume: Optional[np.ndarray] = None,
+        fallback_spacing_mm: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        allow_synthetic_fallback: bool = True,
+    ) -> TotalSegmentatorOutput:
+        """
+        Executes segmentation on input volume, respecting clinical fail-closed rules.
+        """
+        force_mock = not self.is_installed() and allow_synthetic_fallback
+        p = Path(str(input_volume_path))
+        target = p if p.is_file() else (fallback_volume if fallback_volume is not None else input_volume_path)
+        return self.segment_volume(
+            nifti_or_array=target,
+            spacing_mm=fallback_spacing_mm,
+            target_kidney=target_kidney,
+            force_mock=force_mock,
+        )
+
     def segment_volume(
         self,
         nifti_or_array: Union[Path, str, np.ndarray],
