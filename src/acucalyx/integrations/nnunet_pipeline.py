@@ -94,18 +94,31 @@ class NnunetPipelineManager:
         ct_array: np.ndarray,
         label_array: np.ndarray,
         spacing_mm: Tuple[float, float, float] = (1.0, 1.0, 1.0),
+        affine_4x4: Optional[np.ndarray] = None,
+        origin_lps_mm: Optional[Tuple[float, float, float]] = None,
         is_test: bool = False,
     ) -> Tuple[Path, Optional[Path]]:
         """
         Saves a 3D CT volume and its corresponding ground-truth segmentation labelmap
-        into NIfTI files following nnU-Net v2 naming conventions.
+        into NIfTI files following nnU-Net v2 naming conventions, preserving physical world geometry.
         """
         import nibabel as nib
         self.initialize_dataset_directory()
 
-        # Transpose [Z, Y, X] -> [X, Y, Z] for standard NIfTI LPS affine
+        # Transpose [Z, Y, X] -> [X, Y, Z] for standard NIfTI voxel indexing
         vol_xyz = np.transpose(ct_array, (2, 1, 0))
-        affine = np.diag([spacing_mm[0], spacing_mm[1], spacing_mm[2], 1.0])
+
+        if affine_4x4 is not None:
+            # Preserve complete physical affine [4x4]
+            affine = np.array(affine_4x4, dtype=np.float64, copy=True)
+        else:
+            # Build physical affine: convert DICOM LPS origin to NIfTI RAS+
+            affine = np.diag([float(spacing_mm[0]), float(spacing_mm[1]), float(spacing_mm[2]), 1.0])
+            if origin_lps_mm is not None:
+                # NIfTI world coordinates are RAS+ (X_ras = -X_lps, Y_ras = -Y_lps, Z_ras = Z_lps)
+                affine[0, 3] = -float(origin_lps_mm[0])
+                affine[1, 3] = -float(origin_lps_mm[1])
+                affine[2, 3] = float(origin_lps_mm[2])
 
         if is_test:
             img_path = self.images_ts / f"{case_id}_0000.nii.gz"

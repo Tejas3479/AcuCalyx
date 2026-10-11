@@ -268,11 +268,11 @@ def evaluate_geometric_stone_coverage(
                 stone_id=s.stone_id,
                 calyx_id=s.calyx_id,
                 total_volume_mm3=s.volume_mm3,
-                accessible_volume_mm3=s.volume_mm3 * 0.5,  # 50% expectation under uncertainty
-                coverage_fraction=0.5,
+                accessible_volume_mm3=0.0,  # 0% credit under uncertainty (no arbitrary 50% heuristic)
+                coverage_fraction=0.0,
                 access_class=StoneAccessClass.UNCERTAIN,
-                access_mode="UNCERTAIN",
-                rationale="Calyx geometry reconstructed from partial contrast / statistical prior",
+                access_mode="UNCERTAIN_NOT_ASSESSED",
+                rationale="Calyx geometry uncertain: 0% credit awarded without verified physical lumen",
             ))
         else:
             inacc_ids.append(s.stone_id)
@@ -287,7 +287,7 @@ def evaluate_geometric_stone_coverage(
                 rationale="Calyx outside CT field of view or obscured by artifacts",
             ))
 
-    total_acc_vol = dir_vol + flex_vol + (unc_vol * 0.5)
+    total_acc_vol = dir_vol + flex_vol  # Strictly verified direct and flexible volume only
     geom_cov_percent = (total_acc_vol / max(1e-3, total_vol)) * 100.0
     geom_cov_percent = min(100.0, max(0.0, geom_cov_percent))
 

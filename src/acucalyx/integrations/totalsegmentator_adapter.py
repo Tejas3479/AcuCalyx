@@ -35,16 +35,18 @@ TOTALSEGMENTATOR_CLASSES = {
     4: "gallbladder",
     5: "liver",
     6: "stomach",
-    17: "colon",
-    27: "vertebrae_L1",
-    28: "vertebrae_L2",
+    20: "colon",
+    27: "vertebrae_L5",
+    28: "vertebrae_L4",
     29: "vertebrae_L3",
+    30: "vertebrae_L2",
+    31: "vertebrae_L1",
     52: "aorta",
-    53: "inferior_vena_cava",
-    69: "rib_left_11",
-    70: "rib_left_12",
-    81: "rib_right_11",
-    82: "rib_right_12",
+    63: "inferior_vena_cava",
+    102: "rib_left_11",
+    103: "rib_left_12",
+    114: "rib_right_11",
+    115: "rib_right_12",
 }
 
 # Mapping TotalSegmentator anatomical labels to AcuCalyx procedural categories
@@ -159,20 +161,25 @@ class TotalSegmentatorAdapter:
         import tempfile
         with tempfile.TemporaryDirectory() as tmpdir:
             out_dir = Path(tmpdir) / "totalseg_out"
-            cmd = ["TotalSegmentator", "-i", str(input_path), "-o", str(out_dir), "--task", self.task]
+            cmd = ["TotalSegmentator", "-i", str(input_path), "-o", str(out_dir), "--task", self.task, "--ml"]
             if self.fast:
                 cmd.append("--fast")
             res = subprocess.run(cmd, capture_output=True, text=True, check=True)
 
-            # Load multi-label output
+            # Load multi-label output (--ml produces {task}.nii.gz or segmentations.nii.gz)
             import nibabel as nib
             multilabel_path = out_dir / f"{self.task}.nii.gz"
+            if not multilabel_path.exists():
+                multilabel_path = out_dir / "segmentations.nii.gz"
+            if not multilabel_path.exists() and out_dir.with_suffix(".nii.gz").exists():
+                multilabel_path = out_dir.with_suffix(".nii.gz")
+
             if multilabel_path.exists():
                 ml_img = nib.load(str(multilabel_path))
                 ml_arr = np.asanyarray(ml_img.dataobj)
                 ml_arr = np.transpose(ml_arr, (2, 1, 0))
             else:
-                raise RuntimeError("TotalSegmentator output file not generated")
+                raise RuntimeError(f"TotalSegmentator multi-label output file not generated in {out_dir}")
 
             # Extract hazard masks
             hazard_masks: Dict[str, np.ndarray] = {}
@@ -242,29 +249,29 @@ class TotalSegmentatorAdapter:
         ml_vol[spleen_mask & (ml_vol == 0)] = 1
         hazard_masks["spleen"] = (ml_vol == 1).astype(np.uint8)
 
-        # 5. Colon (Label 17): retrorenal / lateral descending and ascending colon
+        # 5. Colon (Label 20): retrorenal / lateral descending and ascending colon
         colon_mask = (
             (((xn - 0.82)**2 / 0.05**2 + (yn - 0.62)**2 / 0.06**2) <= 1.0) |
             (((xn - 0.18)**2 / 0.05**2 + (yn - 0.62)**2 / 0.06**2) <= 1.0)
         ) & (zn >= 0.25) & (zn <= 0.75)
-        ml_vol[colon_mask & (ml_vol == 0)] = 17
-        hazard_masks["colon"] = (ml_vol == 17).astype(np.uint8)
+        ml_vol[colon_mask & (ml_vol == 0)] = 20
+        hazard_masks["colon"] = (ml_vol == 20).astype(np.uint8)
 
-        # 6. Aorta & IVC (Labels 52, 53): midline retroperitoneal vessels
+        # 6. Aorta & IVC (Labels 52, 63): midline retroperitoneal vessels
         aorta_mask = (((xn - 0.46)**2 / 0.03**2 + (yn - 0.52)**2 / 0.03**2) <= 1.0) & (zn >= 0.20) & (zn <= 0.85)
         ivc_mask = (((xn - 0.54)**2 / 0.03**2 + (yn - 0.50)**2 / 0.03**2) <= 1.0) & (zn >= 0.20) & (zn <= 0.85)
         ml_vol[aorta_mask & (ml_vol == 0)] = 52
-        ml_vol[ivc_mask & (ml_vol == 0)] = 53
+        ml_vol[ivc_mask & (ml_vol == 0)] = 63
         hazard_masks["aorta"] = (ml_vol == 52).astype(np.uint8)
-        hazard_masks["inferior_vena_cava"] = (ml_vol == 53).astype(np.uint8)
+        hazard_masks["inferior_vena_cava"] = (ml_vol == 63).astype(np.uint8)
 
-        # 7. 11th and 12th Ribs (Labels 69, 70, 81, 82)
+        # 7. 11th and 12th Ribs (Labels 102, 103, 114, 115)
         r12_mask = (((xn - 0.85)**2 / 0.04**2 + (yn - 0.75)**2 / 0.04**2 + (zn - 0.58)**2 / 0.03**2) <= 1.0)
         l12_mask = (((xn - 0.15)**2 / 0.04**2 + (yn - 0.75)**2 / 0.04**2 + (zn - 0.60)**2 / 0.03**2) <= 1.0)
-        ml_vol[r12_mask & (ml_vol == 0)] = 82
-        ml_vol[l12_mask & (ml_vol == 0)] = 70
-        hazard_masks["rib_right_12"] = (ml_vol == 82).astype(np.uint8)
-        hazard_masks["rib_left_12"] = (ml_vol == 70).astype(np.uint8)
+        ml_vol[r12_mask & (ml_vol == 0)] = 115
+        ml_vol[l12_mask & (ml_vol == 0)] = 103
+        hazard_masks["rib_right_12"] = (ml_vol == 115).astype(np.uint8)
+        hazard_masks["rib_left_12"] = (ml_vol == 103).astype(np.uint8)
 
         kidney_mask = hazard_masks["kidney_right"] if target_kidney.lower() == "right" else hazard_masks["kidney_left"]
 

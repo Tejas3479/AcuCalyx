@@ -113,7 +113,10 @@ class TestTotalSegmentatorAdapter:
     def test_classes_and_hazard_mapping(self):
         assert 1 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[1] == "spleen"
         assert 2 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[2] == "kidney_right"
-        assert 17 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[17] == "colon"
+        assert 20 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[20] == "colon"
+        assert 63 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[63] == "inferior_vena_cava"
+        assert 103 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[103] == "rib_left_12"
+        assert 115 in TOTALSEGMENTATOR_CLASSES and TOTALSEGMENTATOR_CLASSES[115] == "rib_right_12"
 
         assert ACUCALYX_HAZARD_CATEGORY_MAP["colon"] == "VISCERAL_CRITICAL"
         assert ACUCALYX_HAZARD_CATEGORY_MAP["aorta"] == "VASCULAR_MAJOR"

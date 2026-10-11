@@ -73,18 +73,36 @@ def generate_access_caliber_profiles(
     per the 2026 EAU Urolithiasis guidelines without prescribing autonomous mandates.
     """
     target_calyx = graph.calyces.get(target_calyx_id)
-    target_feret = target_calyx.infundibular_width_min_mm if target_calyx else 6.0
 
     # 1. Mini-PCNL Profile (Representative 16 Fr sheath: 5.33 mm OD, 4.8 mm ID)
     mini_od = 5.33
     mini_id = 4.80
     mini_req_feret = mini_od + 0.5  # 0.5 mm anatomical clearance margin
-    if target_feret >= mini_req_feret:
-        mini_status = "COMPATIBLE"
-    elif target_feret >= mini_od:
-        mini_status = "TIGHT_CLEARANCE"
+
+    # 2. Standard PCNL Profile (Representative 28 Fr sheath: 9.33 mm OD, 8.5 mm ID)
+    std_od = 9.33
+    std_id = 8.50
+    std_req_feret = std_od + 0.5
+
+    if target_calyx is None or target_calyx.infundibular_width_min_mm is None or target_calyx.infundibular_width_min_mm <= 0.0:
+        target_feret = 0.0
+        mini_status = "NOT_ASSESSABLE"
+        std_status = "NOT_ASSESSABLE"
     else:
-        mini_status = "INCOMPATIBLE"
+        target_feret = float(target_calyx.infundibular_width_min_mm)
+        if target_feret >= mini_req_feret:
+            mini_status = "COMPATIBLE"
+        elif target_feret >= mini_od:
+            mini_status = "TIGHT_CLEARANCE"
+        else:
+            mini_status = "INCOMPATIBLE"
+
+        if target_feret >= std_req_feret:
+            std_status = "COMPATIBLE"
+        elif target_feret >= std_od:
+            std_status = "TIGHT_CLEARANCE"
+        else:
+            std_status = "INCOMPATIBLE"
 
     mini_tradeoffs = {
         "bleeding_and_transfusion_risk": "Lower estimated blood loss and reduced transfusion requirement relative to standard tract (EAU 2026).",
@@ -107,17 +125,6 @@ def generate_access_caliber_profiles(
         relative_operative_tradeoffs=mini_tradeoffs,
         clinical_governance_notice="Descriptive morphometric assessment. Does not constitute a clinical directive.",
     )
-
-    # 2. Standard PCNL Profile (Representative 28 Fr sheath: 9.33 mm OD, 8.5 mm ID)
-    std_od = 9.33
-    std_id = 8.50
-    std_req_feret = std_od + 0.5
-    if target_feret >= std_req_feret:
-        std_status = "COMPATIBLE"
-    elif target_feret >= std_od:
-        std_status = "TIGHT_CLEARANCE"
-    else:
-        std_status = "INCOMPATIBLE"
 
     std_tradeoffs = {
         "bleeding_and_transfusion_risk": "Higher potential bleeding rate and transfusion risk due to larger parenchymal tract caliber (EAU 2026).",
@@ -142,13 +149,20 @@ def generate_access_caliber_profiles(
     )
 
     # Descriptive summary narrative
-    descriptive_summary = (
-        f"Case stone burden: {total_stone_volume_mm3:.1f} mm³ (maximum linear caliper: {max_stone_caliper_mm:.1f} mm). "
-        f"Target calyx infundibular minimum Feret diameter: {target_feret:.1f} mm. "
-        f"Mini-PCNL (16 Fr, OD {mini_od:.1f} mm) status: {mini_status}. "
-        f"Standard PCNL (28 Fr, OD {std_od:.1f} mm) status: {std_status}. "
-        f"Selection involves clinical balancing of clearance speed versus bleeding risk per operating surgeon judgment."
-    )
+    if target_feret == 0.0:
+        descriptive_summary = (
+            f"Case stone burden: {total_stone_volume_mm3:.1f} mm³ (maximum linear caliper: {max_stone_caliper_mm:.1f} mm). "
+            f"Target calyx infundibular caliber could not be assessed from input geometry (status: NOT_ASSESSABLE). "
+            f"Sheath compatibility cannot be verified computationally without patient infundibular morphometry."
+        )
+    else:
+        descriptive_summary = (
+            f"Case stone burden: {total_stone_volume_mm3:.1f} mm³ (maximum linear caliper: {max_stone_caliper_mm:.1f} mm). "
+            f"Target calyx infundibular minimum Feret diameter: {target_feret:.1f} mm. "
+            f"Mini-PCNL (16 Fr, OD {mini_od:.1f} mm) status: {mini_status}. "
+            f"Standard PCNL (28 Fr, OD {std_od:.1f} mm) status: {std_status}. "
+            f"Selection involves clinical balancing of clearance speed versus bleeding risk per operating surgeon judgment."
+        )
 
     # Explicit scope note on intrarenal pressure
     irp_context = (

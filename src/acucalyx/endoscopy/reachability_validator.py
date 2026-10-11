@@ -11,7 +11,7 @@ Replaces Pearson correlation (r ≥ 0.88) and ASTM F2554-22 overclaims with rigo
 
 from dataclasses import dataclass, field
 import math
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 import numpy as np
 
 from acucalyx.endoscopy.instrument_registry import (
@@ -62,7 +62,7 @@ class InterRaterReliabilityResult:
     parameter_name: str
     num_cases: int
     num_raters: int
-    icc_value: float  # ICC(2,1)
+    icc_value: Optional[float]  # ICC(2,1), None if sample size insufficient
     icc_threshold: float
     agreement_interpretation: str
     passed: bool
@@ -83,6 +83,7 @@ class PhysicalPhantomConcordanceResult:
 class M15ValidationGateReport:
     """Comprehensive Milestone M15-V Certification Gate Report."""
     gate_identifier: str = "ACU-M15-V-GATE-2026"
+    status: str = "NOT_EVALUABLE"  # "APPROVED / FROZEN", "REJECTED", "NOT_EVALUABLE"
     ipa_validation: Optional[MorphometryValidationResult] = None
     iw_validation: Optional[MorphometryValidationResult] = None
     classification_metrics: Optional[ReachabilityClassificationMetrics] = None
@@ -229,10 +230,10 @@ def compute_icc_2_1(
             parameter_name=param_name,
             num_cases=n,
             num_raters=k,
-            icc_value=1.0,
+            icc_value=None,
             icc_threshold=icc_threshold,
-            agreement_interpretation="Sample too small for variance analysis",
-            passed=True,
+            agreement_interpretation="INSUFFICIENT_SAMPLE_SIZE: Sample size or rater count too small for variance analysis",
+            passed=False,
         )
 
     # Mean squares via two-way ANOVA
@@ -294,48 +295,36 @@ def evaluate_m15_validation_gate(
     class_pred: Optional[np.ndarray] = None,
     class_ref: Optional[np.ndarray] = None,
     multi_expert_ratings: Optional[np.ndarray] = None,
+    phantom_measurements: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> M15ValidationGateReport:
     """
     Executes the comprehensive Milestone M15-V Validation Gate evaluation against
     clinical benchmark thresholds and M15.0 physical phantoms.
+
+    FAILS CLOSED: If real reference or prediction data is not provided, returns
+    status="NOT_EVALUABLE" and overall_gate_passed=False. Automated self-approval
+    with synthetic defaults is strictly prohibited under ISO 13485 / IEC 62304.
     """
-    # 1. Synthesize benchmark data if not explicitly passed
-    if ipa_pred is None or ipa_ref is None:
-        np.random.seed(42)
-        ipa_ref = np.array([
-            72.0, 68.0, 74.0, 65.0, 52.0, 48.0, 50.0, 44.0, 28.0, 42.0,
-            25.0, 32.0, 60.0, 55.0, 40.0, 35.0, 78.0, 82.0, 31.0, 46.0,
-            58.0, 64.0, 49.0, 38.0, 70.0, 75.0, 29.0, 43.0, 53.0, 62.0
-        ])
-        # Add realistic minor segmentation noise (mean absolute error ~ 2.2°)
-        noise = np.random.normal(0.0, 2.5, len(ipa_ref))
-        ipa_pred = ipa_ref + noise
+    from datetime import datetime, timezone
 
-    if iw_pred is None or iw_ref is None:
-        np.random.seed(43)
-        iw_ref = np.array([
-            7.5, 6.8, 6.2, 5.8, 5.2, 4.8, 4.5, 4.2, 3.2, 4.0,
-            3.8, 4.2, 5.5, 6.0, 4.8, 3.9, 8.0, 8.5, 3.4, 4.7,
-            5.8, 6.5, 5.0, 4.1, 7.2, 7.8, 3.1, 4.4, 5.3, 6.4
-        ])
-        # Add sub-millimeter CT partial-volume noise (mean absolute error ~ 0.28 mm)
-        noise_iw = np.random.normal(0.0, 0.35, len(iw_ref))
-        iw_pred = np.maximum(2.0, iw_ref + noise_iw)
-
-    if class_pred is None or class_ref is None:
-        class_ref = (ipa_ref >= 35.0) & (iw_ref >= 4.0)
-        # Pred closely agrees with minor noise
-        class_pred = class_ref.copy()
-        class_pred[8] = False  # Calyx 8: acute angle concordantly restricted
-
-    if multi_expert_ratings is None:
-        # N=30 cases across 3 independent expert endourologists
-        np.random.seed(44)
-        base = ipa_ref
-        rater1 = base + np.random.normal(0.0, 2.0, len(base))
-        rater2 = base + np.random.normal(0.2, 2.2, len(base))
-        rater3 = base + np.random.normal(-0.1, 2.1, len(base))
-        multi_expert_ratings = np.column_stack([rater1, rater2, rater3])
+    # 1. Fail closed if any required clinical arrays are missing
+    if (
+        ipa_pred is None or ipa_ref is None or
+        iw_pred is None or iw_ref is None or
+        class_pred is None or class_ref is None or
+        multi_expert_ratings is None
+    ):
+        return M15ValidationGateReport(
+            gate_identifier="ACU-M15-V-GATE-2026",
+            status="NOT_EVALUABLE",
+            overall_gate_passed=False,
+            validation_timestamp=datetime.now(timezone.utc).isoformat(),
+            summary_findings=(
+                "Evaluation blocked: missing real reference or prediction data from locked manifest. "
+                "Automated self-approval with synthetic defaults is prohibited under ISO 13485 / IEC 62304. "
+                "Ensure versioned adjudicated ground truth and physical phantom measurements are supplied."
+            ),
+        )
 
     # 2. Continuous Morphometry Agreement
     ipa_result = compute_continuous_agreement(ipa_pred, ipa_ref, "Infundibulopelvic Angle (IPA)", mae_threshold=5.0, unit_str="deg")
@@ -347,27 +336,39 @@ def evaluate_m15_validation_gate(
     # 4. Inter-Rater Reliability
     icc_result = compute_icc_2_1(multi_expert_ratings, param_name="IPA Expert Consistency", icc_threshold=0.80)
 
-    # 5. Physical Phantom Concordance
+    # 5. Physical Phantom Concordance (Evaluates measured vs predicted tolerances)
     phantom_results: Dict[str, bool] = {}
     total_calyces = 0
     concordant = 0
     for pid, phantom in M15_REFERENCE_PHANTOMS.items():
+        phantom_calyces_count = 0
+        phantom_concordant_count = 0
+        p_meas = phantom_measurements.get(pid, {}) if phantom_measurements else None
+
         for cid, calyx in phantom.calyces.items():
             total_calyces += 1
-            # Check if predicted accessibility aligns with ground truth
-            # Favorable phantom calyces must be concordant
+            phantom_calyces_count += 1
             is_truth_acc = calyx.is_flexible_accessible_unloaded
-            is_pred_acc = (calyx.ipa_true_deg >= 30.0) and (calyx.iw_min_true_mm >= 3.5)
+
+            # If physical measurements supplied, check measured error; otherwise use predicted rule
+            if p_meas and cid in p_meas:
+                is_pred_acc = bool(p_meas[cid].get("is_accessible", False))
+            else:
+                is_pred_acc = (calyx.ipa_true_deg >= 30.0) and (calyx.iw_min_true_mm >= 3.5)
+
             if is_truth_acc == is_pred_acc:
                 concordant += 1
-        phantom_results[pid] = True
+                phantom_concordant_count += 1
+
+        # Phantom passes ONLY if ALL calyces in that phantom are concordant
+        phantom_results[pid] = (phantom_calyces_count > 0 and phantom_concordant_count == phantom_calyces_count)
 
     phantom_concordance = PhysicalPhantomConcordanceResult(
         total_phantom_calyces=total_calyces,
         concordant_evaluations=concordant,
         critical_discrepancies=total_calyces - concordant,
         concordance_rate_percent=(concordant / max(1, total_calyces)) * 100.0,
-        passed=(total_calyces - concordant == 0),
+        passed=(total_calyces - concordant == 0 and all(phantom_results.values())),
         phantom_results=phantom_results,
     )
 
@@ -379,18 +380,20 @@ def evaluate_m15_validation_gate(
         phantom_concordance.passed
     )
 
+    status_str = "APPROVED / FROZEN" if all_passed else "REJECTED"
+    icc_str = f"{icc_result.icc_value:.3f}" if icc_result.icc_value is not None else "N/A"
     summary = (
-        f"Milestone M15-V Gate: {'APPROVED / FROZEN' if all_passed else 'REJECTED'}. "
+        f"Milestone M15-V Gate: {status_str}. "
         f"IPA MAE: {ipa_result.mean_absolute_error:.2f}° (Limit ≤ 5.0°); "
         f"IW MAE: {iw_result.mean_absolute_error:.2f} mm (Limit ≤ 0.6 mm); "
         f"Cohen's κ: {class_result.cohens_kappa:.3f} (Limit ≥ 0.82, Lower 95% CI: {class_result.kappa_ci_lower_95:.3f}); "
-        f"ICC(2,1): {icc_result.icc_value:.3f} (Limit ≥ 0.80); "
+        f"ICC(2,1): {icc_str} (Limit ≥ 0.80); "
         f"Physical Phantom Concordance: {phantom_concordance.concordance_rate_percent:.1f}% (0 critical failures)."
     )
 
-    from datetime import datetime, timezone
     return M15ValidationGateReport(
         gate_identifier="ACU-M15-V-GATE-2026",
+        status=status_str,
         ipa_validation=ipa_result,
         iw_validation=iw_result,
         classification_metrics=class_result,
@@ -400,3 +403,49 @@ def evaluate_m15_validation_gate(
         validation_timestamp=datetime.now(timezone.utc).isoformat(),
         summary_findings=summary,
     )
+
+
+def generate_synthetic_m15v_test_data() -> Dict[str, np.ndarray]:
+    """
+    Test Fixture Utility ONLY: Generates reproducible synthetic morphometry arrays
+    for unit testing statistical agreement calculators.
+    NOT accessible or used by production validation routes.
+    """
+    np.random.seed(42)
+    ipa_ref = np.array([
+        72.0, 68.0, 74.0, 65.0, 52.0, 48.0, 50.0, 44.0, 28.0, 42.0,
+        25.0, 32.0, 60.0, 55.0, 40.0, 35.0, 78.0, 82.0, 31.0, 46.0,
+        58.0, 64.0, 49.0, 38.0, 70.0, 75.0, 29.0, 43.0, 53.0, 62.0
+    ])
+    noise = np.random.normal(0.0, 2.5, len(ipa_ref))
+    ipa_pred = ipa_ref + noise
+
+    np.random.seed(43)
+    iw_ref = np.array([
+        7.5, 6.8, 6.2, 5.8, 5.2, 4.8, 4.5, 4.2, 3.2, 4.0,
+        3.8, 4.2, 5.5, 6.0, 4.8, 3.9, 8.0, 8.5, 3.4, 4.7,
+        5.8, 6.5, 5.0, 4.1, 7.2, 7.8, 3.1, 4.4, 5.3, 6.4
+    ])
+    noise_iw = np.random.normal(0.0, 0.35, len(iw_ref))
+    iw_pred = np.maximum(2.0, iw_ref + noise_iw)
+
+    class_ref = (ipa_ref >= 35.0) & (iw_ref >= 4.0)
+    class_pred = class_ref.copy()
+    class_pred[8] = False
+
+    np.random.seed(44)
+    base = ipa_ref
+    rater1 = base + np.random.normal(0.0, 2.0, len(base))
+    rater2 = base + np.random.normal(0.2, 2.2, len(base))
+    rater3 = base + np.random.normal(-0.1, 2.1, len(base))
+    multi_expert_ratings = np.column_stack([rater1, rater2, rater3])
+
+    return {
+        "ipa_pred": ipa_pred,
+        "ipa_ref": ipa_ref,
+        "iw_pred": iw_pred,
+        "iw_ref": iw_ref,
+        "class_pred": class_pred,
+        "class_ref": class_ref,
+        "multi_expert_ratings": multi_expert_ratings,
+    }

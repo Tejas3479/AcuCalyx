@@ -80,6 +80,7 @@ from acucalyx.endoscopy.reachability_validator import (
     compute_classification_agreement,
     compute_icc_2_1,
     evaluate_m15_validation_gate,
+    generate_synthetic_m15v_test_data,
 )
 
 client = TestClient(app)
@@ -537,9 +538,18 @@ class TestMilestoneM15ValidationGate:
         assert "Agreement" in icc_res.agreement_interpretation
 
     def test_comprehensive_validation_gate_execution(self):
-        report = evaluate_m15_validation_gate()
+        # Empty evaluation fails closed
+        report_empty = evaluate_m15_validation_gate()
+        assert report_empty.gate_identifier == "ACU-M15-V-GATE-2026"
+        assert report_empty.overall_gate_passed is False
+        assert report_empty.status == "NOT_EVALUABLE"
+
+        # Evaluation with valid dataset passes
+        data = generate_synthetic_m15v_test_data()
+        report = evaluate_m15_validation_gate(**data)
         assert report.gate_identifier == "ACU-M15-V-GATE-2026"
         assert report.overall_gate_passed is True
+        assert report.status == "APPROVED / FROZEN"
         assert report.ipa_validation.passed is True
         assert report.iw_validation.passed is True
         assert report.classification_metrics.passed is True
@@ -568,46 +578,58 @@ class TestEndoscopyAPIEndpoints:
         assert "reference_phantoms" in data
         assert len(data["reference_phantoms"]) >= 3
 
-    def test_get_reachability_endpoint(self):
+    def test_reachability_patient_mode_fails_closed(self):
+        # In patient mode without artifacts, fail closed with 422
         resp = client.get(
             "/api/cases/test_case/endoscopy/CAND_01/reachability",
-            params={"instrument_model_id": "OLYMPUS_URF_V3", "tool": "LASER_FIBER_200UM"}
+            params={"instrument_model_id": "OLYMPUS_URF_V3", "tool": "LASER_FIBER_200UM", "demo_mode": False}
+        )
+        assert resp.status_code == 422
+
+    def test_get_reachability_endpoint_demo_mode(self):
+        resp = client.get(
+            "/api/cases/test_case/endoscopy/CAND_01/reachability",
+            params={"instrument_model_id": "OLYMPUS_URF_V3", "tool": "LASER_FIBER_200UM", "demo_mode": True}
         )
         assert resp.status_code == 200
         data = resp.json()
         assert data["candidate_id"] == "CAND_01"
+        assert data["provenance_mode"] == "SYNTHETIC_DEMO_NON_CLINICAL"
         assert "overall_reachability_fraction" in data
         assert "calyces" in data
         assert len(data["calyces"]) >= 4
 
-    def test_get_stone_coverage_endpoint(self):
+    def test_get_stone_coverage_endpoint_demo_mode(self):
         resp = client.get(
             "/api/cases/test_case/endoscopy/CAND_01/stone-coverage",
-            params={"instrument_model_id": "OLYMPUS_URF_V3", "tool": "LASER_FIBER_200UM"}
+            params={"instrument_model_id": "OLYMPUS_URF_V3", "tool": "LASER_FIBER_200UM", "demo_mode": True}
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["provenance_mode"] == "SYNTHETIC_DEMO_NON_CLINICAL"
         assert "geometric_coverage_estimate_percent" in data
         assert data["geometric_coverage_estimate_percent"] > 0.0
         assert "stones" in data
         assert "descriptive_notice" in data
 
-    def test_get_access_caliber_profiles_endpoint(self):
-        resp = client.get("/api/cases/test_case/endoscopy/CAND_01/access-caliber-profiles")
+    def test_get_access_caliber_profiles_endpoint_demo_mode(self):
+        resp = client.get("/api/cases/test_case/endoscopy/CAND_01/access-caliber-profiles", params={"demo_mode": True})
         assert resp.status_code == 200
         data = resp.json()
+        assert data["provenance_mode"] == "SYNTHETIC_DEMO_NON_CLINICAL"
         assert "profiles" in data
         assert "MINI_PCNL" in data["profiles"]
         assert "STANDARD_PCNL" in data["profiles"]
         assert "intrarenal_pressure_context" in data
 
-    def test_get_endoluminal_rehearsal_endpoint(self):
+    def test_get_endoluminal_rehearsal_endpoint_demo_mode(self):
         resp = client.get(
             "/api/cases/test_case/endoscopy/CAND_01/endoluminal-rehearsal",
-            params={"instrument_model_id": "OLYMPUS_URF_V3", "target_calyx_id": "MP"}
+            params={"instrument_model_id": "OLYMPUS_URF_V3", "target_calyx_id": "MP", "demo_mode": True}
         )
         assert resp.status_code == 200
         data = resp.json()
+        assert data["provenance_mode"] == "SYNTHETIC_DEMO_NON_CLINICAL"
         assert "keyframes" in data
         assert data["keyframes_count"] >= 8
         assert "synthetic_rendering_notice" in data
@@ -617,6 +639,7 @@ class TestEndoscopyAPIEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["gate_identifier"] == "ACU-M15-V-GATE-2026"
-        assert data["overall_gate_passed"] is True
+        assert data["status"] == "NOT_EVALUABLE"
+        assert data["overall_gate_passed"] is False
         assert "ipa_agreement" in data
         assert "physical_phantom_concordance" in data

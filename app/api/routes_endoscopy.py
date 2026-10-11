@@ -62,96 +62,151 @@ CASES_DIR = BASE_DIR / "data" / "cases"
 router = APIRouter(prefix="/api/cases", tags=["Endoscopic Reachability & Virtual Nephroscopy"])
 
 
-def _get_case_graph(case_id: str) -> CollectingSystemGraph:
+def _get_case_graph(case_id: str, demo_mode: bool = False) -> CollectingSystemGraph:
     """Builds or loads the collecting system graph for a specified case."""
-    # Build physiologically realistic collecting system graph for case
+    graph_path = CASES_DIR / case_id / "artifacts" / "graph.json"
+    if graph_path.is_file():
+        try:
+            pass  # Future persisted patient-specific graph loading
+        except Exception:
+            pass
+
+    if not demo_mode:
+        raise HTTPException(
+            status_code=422,
+            detail=f"No patient collecting-system graph available for case '{case_id}'. "
+                   "Run pelvicalyceal segmentation/skeletonization or pass demo_mode=true for non-clinical simulation."
+        )
+
+    # In explicit demo mode, generate procedural benchmark graph
     return build_procedural_collecting_system_graph(case_id=case_id)
 
 
-def _get_case_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]:
+def _get_case_trajectory(case_id: str, candidate_id: str, demo_mode: bool = False) -> Dict[str, Any]:
     """Retrieves candidate percutaneous trajectory metadata."""
-    meta_path = CASES_DIR / case_id / "case_meta.json"
-    if meta_path.is_file():
+    cand_path = CASES_DIR / case_id / "artifacts" / "candidates.json"
+    candidates = []
+    if cand_path.is_file():
         try:
-            with open(meta_path, "r") as f:
-                meta = json.load(f)
-            candidates = meta.get("plan", {}).get("candidates", [])
-            for cand in candidates:
-                if cand.get("candidate_id") == candidate_id or cand.get("id") == candidate_id:
-                    return cand
-            if candidates:
-                return candidates[0]
+            with open(cand_path, "r") as f:
+                candidates = json.load(f)
         except Exception:
-            pass
+            candidates = []
 
-    # High-quality canonical fallback trajectory entering lower posterior calyx
-    return {
-        "candidate_id": candidate_id,
-        "entry_point": [115.0, -170.0, -40.0],
-        "target_point": [45.0, -10.0, -32.0],  # Aligned with LP apex
-        "calyx_id": "LP",
-        "calyx_name": "Lower Posterior Calyx",
-        "length_mm": 175.0,
-    }
+    if not candidates:
+        meta_path = CASES_DIR / case_id / "case_meta.json"
+        if meta_path.is_file():
+            try:
+                with open(meta_path, "r") as f:
+                    meta = json.load(f)
+                candidates = meta.get("plan", {}).get("candidates", [])
+            except Exception:
+                candidates = []
+
+    if candidates:
+        for cand in candidates:
+            if cand.get("candidate_id") == candidate_id or cand.get("id") == candidate_id:
+                return {
+                    "candidate_id": candidate_id,
+                    "entry_point": cand.get("entry_point_lps") or cand.get("entry_point"),
+                    "target_point": cand.get("target_point_lps") or cand.get("target_point"),
+                    "calyx_id": cand.get("target_calyx") or cand.get("calyx_id", "LP"),
+                    "calyx_name": cand.get("calyx_name") or cand.get("target_calyx", "Target Calyx"),
+                    "length_mm": cand.get("tract_length_mm") or cand.get("length_mm", 150.0),
+                }
+        # Candidates exist for case, but candidate_id was not in the list
+        raise HTTPException(
+            status_code=404,
+            detail=f"Candidate trajectory '{candidate_id}' not found for case '{case_id}'."
+        )
+
+    # No candidates exist on disk for case
+    if demo_mode:
+        return {
+            "candidate_id": candidate_id,
+            "entry_point": [115.0, -170.0, -40.0],
+            "target_point": [45.0, -10.0, -32.0],
+            "calyx_id": "LP",
+            "calyx_name": "Lower Posterior Calyx",
+            "length_mm": 175.0,
+        }
+
+    raise HTTPException(
+        status_code=404,
+        detail=f"No planned candidate trajectories found for case '{case_id}' (candidate_id='{candidate_id}'). Pass demo_mode=true to evaluate procedural simulation."
+    )
 
 
-def _get_case_stones(case_id: str) -> List[StoneBurdenUnit]:
-    """Retrieves or synthesizes segmented calculus burden for case."""
-    meta_path = CASES_DIR / case_id / "case_meta.json"
-    if meta_path.is_file():
+def _get_case_stones(case_id: str, demo_mode: bool = False) -> List[StoneBurdenUnit]:
+    """Retrieves segmented calculus burden for case, or representative demo stones in demo mode."""
+    stones_path = CASES_DIR / case_id / "artifacts" / "stones.json"
+    stones_raw = []
+    if stones_path.is_file():
         try:
-            with open(meta_path, "r") as f:
-                meta = json.load(f)
-            stones_raw = meta.get("plan", {}).get("stones", [])
-            if stones_raw:
-                units = []
-                for idx, s in enumerate(stones_raw):
-                    sid = s.get("stone_id", f"STONE_{idx+1}")
-                    cid = s.get("calyx_id", "LP" if idx == 0 else "MP")
-                    vol = float(s.get("volume_mm3", 450.0))
-                    caliper = float(s.get("max_caliper_mm", 12.0))
-                    centroid = np.array(s.get("centroid_lps_mm", [45.0, -8.0, -30.0]), dtype=float)
-                    units.append(StoneBurdenUnit(
-                        stone_id=sid,
-                        calyx_id=cid,
-                        volume_mm3=vol,
-                        max_caliper_mm=caliper,
-                        centroid_lps_mm=centroid,
-                    ))
-                return units
+            with open(stones_path, "r") as f:
+                stones_raw = json.load(f)
         except Exception:
-            pass
+            stones_raw = []
 
-    # Default representative dual-calculus burden:
-    # Stone 1 in Lower Posterior calyx (directly reachable from lower tract)
-    # Stone 2 in Middle Posterior calyx (reachable via active deflection)
-    # Stone 3 in Upper calyx (partial/isolated challenge)
-    return [
-        StoneBurdenUnit(
-            stone_id="STONE_1_LP",
-            calyx_id="LP",
-            volume_mm3=950.0,
-            max_caliper_mm=14.5,
-            centroid_lps_mm=np.array([45.0, -10.0, -32.0]),
-            hounsfield_mean=1120.0,
-        ),
-        StoneBurdenUnit(
-            stone_id="STONE_2_MP",
-            calyx_id="MP",
-            volume_mm3=520.0,
-            max_caliper_mm=10.2,
-            centroid_lps_mm=np.array([52.0, -5.0, 5.0]),
-            hounsfield_mean=980.0,
-        ),
-        StoneBurdenUnit(
-            stone_id="STONE_3_MA",
-            calyx_id="MA",
-            volume_mm3=310.0,
-            max_caliper_mm=7.8,
-            centroid_lps_mm=np.array([48.0, 35.0, 2.0]),
-            hounsfield_mean=860.0,
-        ),
-    ]
+    if not stones_raw:
+        meta_path = CASES_DIR / case_id / "case_meta.json"
+        if meta_path.is_file():
+            try:
+                with open(meta_path, "r") as f:
+                    meta = json.load(f)
+                stones_raw = meta.get("plan", {}).get("stones", [])
+            except Exception:
+                stones_raw = []
+
+    if stones_raw:
+        units = []
+        for idx, s in enumerate(stones_raw):
+            sid = str(s.get("stone_id", f"STONE_{idx+1}"))
+            cid = s.get("calyx_id", "LP" if idx == 0 else "MP")
+            vol = float(s.get("volume_mm3", 0.0))
+            caliper = float(s.get("max_caliper_mm") or s.get("max_feret_diameter_mm", 10.0))
+            centroid = np.array(s.get("centroid_lps_mm", [45.0, -8.0, -30.0]), dtype=float)
+            hu = float(s.get("mean_hu", 1000.0))
+            units.append(StoneBurdenUnit(
+                stone_id=sid,
+                calyx_id=cid,
+                volume_mm3=vol,
+                max_caliper_mm=caliper,
+                centroid_lps_mm=centroid,
+                hounsfield_mean=hu,
+            ))
+        return units
+
+    if demo_mode:
+        return [
+            StoneBurdenUnit(
+                stone_id="STONE_1_LP",
+                calyx_id="LP",
+                volume_mm3=950.0,
+                max_caliper_mm=14.5,
+                centroid_lps_mm=np.array([45.0, -10.0, -32.0]),
+                hounsfield_mean=1120.0,
+            ),
+            StoneBurdenUnit(
+                stone_id="STONE_2_MP",
+                calyx_id="MP",
+                volume_mm3=520.0,
+                max_caliper_mm=10.2,
+                centroid_lps_mm=np.array([52.0, -5.0, 5.0]),
+                hounsfield_mean=980.0,
+            ),
+            StoneBurdenUnit(
+                stone_id="STONE_3_MA",
+                calyx_id="MA",
+                volume_mm3=310.0,
+                max_caliper_mm=7.8,
+                centroid_lps_mm=np.array([48.0, 35.0, 2.0]),
+                hounsfield_mean=860.0,
+            ),
+        ]
+
+    # In patient mode with no segmented calculi, return empty list (no manufactured calculi)
+    return []
 
 
 # -----------------------------------------------------------------------------
@@ -242,6 +297,7 @@ async def get_trajectory_reachability(
     candidate_id: str,
     instrument_model_id: str = Query("OLYMPUS_URF_V3", description="Validated endoscope model ID"),
     tool: str = Query("LASER_FIBER_200UM", description="Working channel tool configuration"),
+    demo_mode: bool = Query(False, description="Explicit flag allowing synthetic demo data when true; patient mode (False) fails closed if case artifacts are missing"),
 ) -> Dict[str, Any]:
     """Evaluates multi-calyceal reachability from candidate trajectory sheath axis."""
     try:
@@ -254,8 +310,8 @@ async def get_trajectory_reachability(
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid tool '{tool}'. Choose from: {[t.value for t in WorkingChannelTool]}")
 
-    graph = _get_case_graph(case_id)
-    cand = _get_case_trajectory(case_id, candidate_id)
+    graph = _get_case_graph(case_id, demo_mode=demo_mode)
+    cand = _get_case_trajectory(case_id, candidate_id, demo_mode=demo_mode)
 
     target_pt = np.array(cand.get("target_point", [45.0, -10.0, -32.0]), dtype=float)
     entry_pt = np.array(cand.get("entry_point", [115.0, -170.0, -40.0]), dtype=float)
@@ -301,6 +357,7 @@ async def get_trajectory_reachability(
     return {
         "case_id": case_id,
         "candidate_id": candidate_id,
+        "provenance_mode": "SYNTHETIC_DEMO_NON_CLINICAL" if demo_mode else "PATIENT_DERIVED_VERIFIED",
         "entered_calyx_id": entered_calyx_id,
         "instrument_model_id": instrument_model_id,
         "instrument_name": scope.model_name,
@@ -324,6 +381,7 @@ async def get_stone_access_coverage(
     candidate_id: str,
     instrument_model_id: str = Query("OLYMPUS_URF_V3", description="Validated endoscope model ID"),
     tool: str = Query("LASER_FIBER_200UM", description="Working channel tool configuration"),
+    demo_mode: bool = Query(False, description="Explicit flag allowing synthetic demo data when true; patient mode (False) fails closed if case artifacts are missing"),
 ) -> Dict[str, Any]:
     """Computes continuous volumetric stone access coverage estimate f_geom."""
     try:
@@ -332,9 +390,9 @@ async def get_stone_access_coverage(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    graph = _get_case_graph(case_id)
-    cand = _get_case_trajectory(case_id, candidate_id)
-    stones = _get_case_stones(case_id)
+    graph = _get_case_graph(case_id, demo_mode=demo_mode)
+    cand = _get_case_trajectory(case_id, candidate_id, demo_mode=demo_mode)
+    stones = _get_case_stones(case_id, demo_mode=demo_mode)
 
     target_pt = np.array(cand.get("target_point", [45.0, -10.0, -32.0]), dtype=float)
     entry_pt = np.array(cand.get("entry_point", [115.0, -170.0, -40.0]), dtype=float)
@@ -375,6 +433,7 @@ async def get_stone_access_coverage(
     return {
         "case_id": case_id,
         "candidate_id": candidate_id,
+        "provenance_mode": "SYNTHETIC_DEMO_NON_CLINICAL" if demo_mode else "PATIENT_DERIVED_VERIFIED",
         "instrument_model_id": instrument_model_id,
         "instrument_name": scope.model_name,
         "tool_configuration": tool_enum.value,
@@ -396,11 +455,15 @@ async def get_stone_access_coverage(
 
 
 @router.get("/{case_id}/endoscopy/{candidate_id}/access-caliber-profiles")
-async def get_access_caliber_profiles(case_id: str, candidate_id: str) -> Dict[str, Any]:
+async def get_access_caliber_profiles(
+    case_id: str,
+    candidate_id: str,
+    demo_mode: bool = Query(False, description="Explicit flag allowing synthetic demo data when true; patient mode (False) fails closed if case artifacts are missing"),
+) -> Dict[str, Any]:
     """Generates comparative descriptive access-caliber compatibility profiles."""
-    graph = _get_case_graph(case_id)
-    cand = _get_case_trajectory(case_id, candidate_id)
-    stones = _get_case_stones(case_id)
+    graph = _get_case_graph(case_id, demo_mode=demo_mode)
+    cand = _get_case_trajectory(case_id, candidate_id, demo_mode=demo_mode)
+    stones = _get_case_stones(case_id, demo_mode=demo_mode)
 
     total_vol = sum(s.volume_mm3 for s in stones)
     max_caliper = max((s.max_caliper_mm for s in stones), default=10.0)
@@ -434,6 +497,7 @@ async def get_access_caliber_profiles(case_id: str, candidate_id: str) -> Dict[s
     return {
         "case_id": case_id,
         "candidate_id": candidate_id,
+        "provenance_mode": "SYNTHETIC_DEMO_NON_CLINICAL" if demo_mode else "PATIENT_DERIVED_VERIFIED",
         "target_calyx_id": target_cid,
         "total_stone_volume_mm3": round(total_vol, 1),
         "max_stone_caliper_mm": round(max_caliper, 1),
@@ -452,6 +516,7 @@ async def get_endoluminal_rehearsal_flythrough(
     target_calyx_id: Optional[str] = Query(None, description="Destination calyx for rehearsal navigation"),
     instrument_model_id: str = Query("OLYMPUS_URF_V3", description="Validated endoscope model ID"),
     tool: str = Query("LASER_FIBER_200UM", description="Working channel tool configuration"),
+    demo_mode: bool = Query(False, description="Explicit flag allowing synthetic demo data when true; patient mode (False) fails closed if case artifacts are missing"),
 ) -> Dict[str, Any]:
     """Generates computed endoluminal rehearsal keyframes with camera poses and HUD telemetry."""
     try:
@@ -460,9 +525,9 @@ async def get_endoluminal_rehearsal_flythrough(
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
-    graph = _get_case_graph(case_id)
-    cand = _get_case_trajectory(case_id, candidate_id)
-    stones = _get_case_stones(case_id)
+    graph = _get_case_graph(case_id, demo_mode=demo_mode)
+    cand = _get_case_trajectory(case_id, candidate_id, demo_mode=demo_mode)
+    stones = _get_case_stones(case_id, demo_mode=demo_mode)
 
     target_pt = np.array(cand.get("target_point", [45.0, -10.0, -32.0]), dtype=float)
     entry_pt = np.array(cand.get("entry_point", [115.0, -170.0, -40.0]), dtype=float)
@@ -509,6 +574,7 @@ async def get_endoluminal_rehearsal_flythrough(
     return {
         "case_id": case_id,
         "candidate_id": candidate_id,
+        "provenance_mode": "SYNTHETIC_DEMO_NON_CLINICAL" if demo_mode else "PATIENT_DERIVED_VERIFIED",
         "entered_calyx_id": entered_calyx_id,
         "target_calyx_id": target_calyx_id,
         "instrument_model_id": instrument_model_id,
@@ -527,13 +593,9 @@ async def get_endoluminal_rehearsal_flythrough(
 async def get_m15_validation_gate_report(case_id: str) -> Dict[str, Any]:
     """Milestone M15-V agreement, calibration, and physical concordance report."""
     report = evaluate_m15_validation_gate()
-    return {
-        "case_id": case_id,
-        "gate_identifier": report.gate_identifier,
-        "overall_gate_passed": report.overall_gate_passed,
-        "validation_timestamp": report.validation_timestamp,
-        "summary_findings": report.summary_findings,
-        "ipa_agreement": {
+    ipa_dict = None
+    if report.ipa_validation:
+        ipa_dict = {
             "parameter": report.ipa_validation.parameter_name,
             "sample_size": report.ipa_validation.sample_size,
             "mean_absolute_error_deg": round(report.ipa_validation.mean_absolute_error, 2),
@@ -546,8 +608,11 @@ async def get_m15_validation_gate_report(case_id: str) -> Dict[str, Any]:
             "threshold_deg": report.ipa_validation.mae_threshold,
             "passed": report.ipa_validation.passed,
             "details": report.ipa_validation.details,
-        },
-        "iw_agreement": {
+        }
+
+    iw_dict = None
+    if report.iw_validation:
+        iw_dict = {
             "parameter": report.iw_validation.parameter_name,
             "sample_size": report.iw_validation.sample_size,
             "mean_absolute_error_mm": round(report.iw_validation.mean_absolute_error, 2),
@@ -560,8 +625,11 @@ async def get_m15_validation_gate_report(case_id: str) -> Dict[str, Any]:
             "threshold_mm": report.iw_validation.mae_threshold,
             "passed": report.iw_validation.passed,
             "details": report.iw_validation.details,
-        },
-        "reachability_classification": {
+        }
+
+    class_dict = None
+    if report.classification_metrics:
+        class_dict = {
             "total_evaluations": report.classification_metrics.total_evaluations,
             "sensitivity": round(report.classification_metrics.sensitivity, 3),
             "specificity": round(report.classification_metrics.specificity, 3),
@@ -572,21 +640,40 @@ async def get_m15_validation_gate_report(case_id: str) -> Dict[str, Any]:
                 round(report.classification_metrics.kappa_ci_upper_95, 3),
             ],
             "passed": report.classification_metrics.passed,
-        },
-        "inter_rater_reliability": {
+        }
+
+    irr_dict = None
+    if report.inter_rater_reliability:
+        irr_dict = {
             "parameter": report.inter_rater_reliability.parameter_name,
             "num_cases": report.inter_rater_reliability.num_cases,
             "num_raters": report.inter_rater_reliability.num_raters,
-            "icc_2_1": round(report.inter_rater_reliability.icc_value, 3),
+            "icc_2_1": round(report.inter_rater_reliability.icc_value, 3) if report.inter_rater_reliability.icc_value is not None else None,
             "interpretation": report.inter_rater_reliability.agreement_interpretation,
             "threshold": report.inter_rater_reliability.icc_threshold,
             "passed": report.inter_rater_reliability.passed,
-        },
-        "physical_phantom_concordance": {
+        }
+
+    phantom_dict = None
+    if report.phantom_concordance:
+        phantom_dict = {
             "total_calyces": report.phantom_concordance.total_phantom_calyces,
             "concordant_evaluations": report.phantom_concordance.concordant_evaluations,
             "critical_discrepancies": report.phantom_concordance.critical_discrepancies,
             "concordance_rate_percent": round(report.phantom_concordance.concordance_rate_percent, 1),
             "passed": report.phantom_concordance.passed,
-        },
+        }
+
+    return {
+        "case_id": case_id,
+        "gate_identifier": report.gate_identifier,
+        "status": report.status,
+        "overall_gate_passed": report.overall_gate_passed,
+        "validation_timestamp": report.validation_timestamp,
+        "summary_findings": report.summary_findings,
+        "ipa_agreement": ipa_dict,
+        "iw_agreement": iw_dict,
+        "reachability_classification": class_dict,
+        "inter_rater_reliability": irr_dict,
+        "physical_phantom_concordance": phantom_dict,
     }

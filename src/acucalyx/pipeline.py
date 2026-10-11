@@ -319,19 +319,49 @@ def run_planning_pipeline(
         input_hash = compute_sha256_file(input_p)
         study_uid = f"NIFTI_STUDY_{input_p.stem}"
         series_uid = f"NIFTI_SERIES_{input_p.stem}"
+        # Real NIfTI Geometric Quality Evaluation
+        reasons = []
+        warnings = []
+        slice_th = float(spatial.spacing[2])
+        px_r = float(spatial.spacing[0])
+        px_c = float(spatial.spacing[1])
+        z_slices = volume_hu.shape[0]
+
+        if z_slices < 10:
+            reasons.append(f"Insufficient slices for 3D reconstruction (found {z_slices}, required >= 10)")
+        if slice_th > 2.5:
+            reasons.append(f"Slice thickness {slice_th:.2f}mm exceeds safe limit of 2.5mm")
+        elif slice_th > 1.25:
+            warnings.append(f"Slice thickness {slice_th:.2f}mm exceeds optimal 1.25mm")
+        if px_r > 1.5 or px_c > 1.5:
+            warnings.append(f"In-plane pixel spacing ({px_r:.2f}x{px_c:.2f}mm) is relatively coarse")
+        if np.all(volume_hu == 0):
+            reasons.append("Empty volume detected: all voxels are 0 HU")
+
+        nifti_passed = len(reasons) == 0
+        geom_score = 1.0 if nifti_passed else max(0.0, 1.0 - len(reasons) * 0.3)
+        res_score = max(0.0, min(1.0, 1.25 / max(1.0, slice_th)))
+
+        if not nifti_passed:
+            quality_tier = 'INSUFFICIENT'
+        elif len(warnings) == 0 and slice_th <= 1.25:
+            quality_tier = 'HIGH'
+        else:
+            quality_tier = 'ACCEPTABLE'
+
         from acucalyx.ingestion.quality_gate import QualityGateResult
         quality_gate = QualityGateResult(
-            passed=True,
-            rejection_reasons=[],
-            warnings=[],
-            geometry_score=1.0,
-            resolution_score=1.0,
-            overall_quality_tier='HIGH',
-            slice_thickness_mm=float(spatial.spacing[2]),
-            pixel_spacing_mm=(float(spatial.spacing[0]), float(spatial.spacing[1])),
-            slice_spacing_mm=float(spatial.spacing[2]),
+            passed=nifti_passed,
+            rejection_reasons=reasons,
+            warnings=warnings,
+            geometry_score=float(geom_score),
+            resolution_score=float(res_score),
+            overall_quality_tier=quality_tier,
+            slice_thickness_mm=slice_th,
+            pixel_spacing_mm=(px_r, px_c),
+            slice_spacing_mm=slice_th,
             is_contrast_enhanced=None,
-            reconstruction_kernel="Standard/NIfTI"
+            reconstruction_kernel="Research/NIfTI"
         )
 
     # Cryptographic Provenance record
