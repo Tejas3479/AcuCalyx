@@ -30,8 +30,9 @@ class CenterlineBenchmarkMetrics:
     method_name: str
     num_sample_points: int
     mean_positional_error_mm: float
-    max_positional_error_mm: float  # Hausdorff distance
-    tangent_cosine_alignment_mean: float  # [0.0, 1.0] where 1.0 = perfect alignment
+    max_positional_error_mm: float  # Full Hausdorff distance (H_max)
+    hausdorff_95_mm: float          # 95th-percentile Hausdorff distance (H_95)
+    tangent_cosine_alignment_mean: float  # [-1.0, 1.0] signed directional alignment
     length_discrepancy_mm: float
     length_discrepancy_percent: float
     passed: bool
@@ -88,10 +89,11 @@ print("VMTK Centerline Extraction Complete.")
     ) -> np.ndarray:
         """
         In-memory reference centerline extractor using SimpleITK Maurer distance-ridge
-        and Dijkstra minimum cost path.
-        Serves as a robust analytical ground truth for automated testing.
+        and Dijkstra minimum-cost path search on reciprocal distance cost field.
+        Serves as an analytical ground truth baseline for automated testing.
         """
-        from scipy.ndimage import distance_transform_edt
+        import heapq
+
         # Signed Maurer distance map (positive inside)
         dist_map = compute_signed_maurer_distance_map(binary_lumen_mask, spacing_mm, inside_is_positive=True)
         dist_map = np.maximum(0.0, dist_map)
@@ -103,6 +105,12 @@ print("VMTK Centerline Extraction Complete.")
             vz = int(np.clip(round((pt[2] - origin_lps[2]) / spacing_mm[2]), 0, dist_map.shape[0] - 1))
             return (vz, vy, vx)
 
+        def vox_to_lps(vox: Tuple[int, int, int]) -> np.ndarray:
+            x = vox[2] * spacing_mm[0] + origin_lps[0]
+            y = vox[1] * spacing_mm[1] + origin_lps[1]
+            z = vox[0] * spacing_mm[2] + origin_lps[2]
+            return np.array([x, y, z], dtype=float)
+
         v_start = lps_to_vox(start_point_lps)
         v_end = lps_to_vox(end_point_lps)
 
@@ -111,15 +119,83 @@ print("VMTK Centerline Extraction Complete.")
         cost_field = (max_d / (dist_map + 0.5))**2
         cost_field[dist_map <= 0.0] = 1e6
 
-        # Fast path via discrete Dijkstra / A* or linear spline interpolation along distance gradient
+        # Dijkstra priority-queue shortest path on 3D grid
+        pq: List[Tuple[float, Tuple[int, int, int]]] = [(0.0, v_start)]
+        dist_accum: Dict[Tuple[int, int, int], float] = {v_start: 0.0}
+        parent: Dict[Tuple[int, int, int], Tuple[int, int, int]] = {}
+        visited = set()
+
+        # 26-connected neighbor offsets
+        neighbor_offsets = [
+            (dz, dy, dx)
+            for dz in (-1, 0, 1)
+            for dy in (-1, 0, 1)
+            for dx in (-1, 0, 1)
+            if not (dz == 0 and dy == 0 and dx == 0)
+        ]
+
+        found_path = False
+        max_steps = 100000
+        step_count = 0
+
+        while pq and step_count < max_steps:
+            step_count += 1
+            cur_d, u = heapq.heappop(pq)
+            if u == v_end:
+                found_path = True
+                break
+            if u in visited:
+                continue
+            visited.add(u)
+
+            for dz, dy, dx in neighbor_offsets:
+                vz = u[0] + dz
+                vy = u[1] + dy
+                vx = u[2] + dx
+                if 0 <= vz < dist_map.shape[0] and 0 <= vy < dist_map.shape[1] and 0 <= vx < dist_map.shape[2]:
+                    v = (vz, vy, vx)
+                    if v in visited:
+                        continue
+                    step_phys = np.sqrt((dx * spacing_mm[0])**2 + (dy * spacing_mm[1])**2 + (dz * spacing_mm[2])**2)
+                    edge_w = 0.5 * (cost_field[u] + cost_field[v]) * step_phys
+                    new_dist = cur_d + edge_w
+                    if new_dist < dist_accum.get(v, float("inf")):
+                        dist_accum[v] = new_dist
+                        parent[v] = u
+                        heapq.heappush(pq, (new_dist, v))
+
         n_steps = 30
+        if found_path:
+            # Backtrack polyline
+            path_vox: List[Tuple[int, int, int]] = [v_end]
+            curr = v_end
+            while curr in parent:
+                curr = parent[curr]
+                path_vox.append(curr)
+            path_vox.reverse()
+
+            raw_pts = np.array([vox_to_lps(vx) for vx in path_vox], dtype=float)
+            if len(raw_pts) < 2:
+                raw_pts = np.vstack([start_point_lps, end_point_lps])
+
+            # Resample backtracked path to exactly n_steps
+            lens = np.insert(np.cumsum(np.linalg.norm(np.diff(raw_pts, axis=0), axis=1)), 0, 0.0)
+            total_l = lens[-1]
+            s_eval = np.linspace(0.0, max(1e-4, total_l), n_steps)
+            pts_out = np.zeros((n_steps, 3), dtype=float)
+            for i, s in enumerate(s_eval):
+                idx = min(len(lens) - 2, max(0, int(np.searchsorted(lens, s, side="right")) - 1))
+                r = (s - lens[idx]) / max(1e-4, lens[idx + 1] - lens[idx])
+                pts_out[i] = raw_pts[idx] * (1.0 - r) + raw_pts[idx + 1] * r
+            pts_out[0] = start_point_lps
+            pts_out[-1] = end_point_lps
+            return pts_out
+
+        # Fallback to distance-guided linear interpolation if disconnected
         t_vals = np.linspace(0.0, 1.0, n_steps)
         pts_out = np.zeros((n_steps, 3), dtype=float)
-
         for i, t in enumerate(t_vals):
-            # Base linear point
             base_pt = (1.0 - t) * start_point_lps + t * end_point_lps
-            # Snap to local distance centroid
             vz, vy, vx = lps_to_vox(base_pt)
             z_win = slice(max(0, vz - 2), min(dist_map.shape[0], vz + 3))
             y_win = slice(max(0, vy - 2), min(dist_map.shape[1], vy + 3))
@@ -143,43 +219,62 @@ print("VMTK Centerline Extraction Complete.")
         acucalyx_pts: np.ndarray,
         reference_pts: np.ndarray,
         method_name: str = "VMTK_Reference",
-        mae_threshold_mm: float = 1.5,
+        mae_threshold_mm: float = 0.8,
+        h95_threshold_mm: float = 1.5,
+        tangent_cosine_threshold: float = 0.95,
     ) -> CenterlineBenchmarkMetrics:
         """
         Computes positional and angular agreement metrics between AcuCalyx centerline
         and reference centerline curve.
+        Calculates true symmetric point-to-curve distance, 95th-percentile Hausdorff (H_95),
+        and direction-aware signed tangent cosine agreement (no abs()).
         """
         p_acu = np.asarray(acucalyx_pts, dtype=float)
         p_ref = np.asarray(reference_pts, dtype=float)
 
-        # Resample both to identical length N = 50 for direct correspondence
         n_eval = 50
-        def resample_curve(c: np.ndarray) -> np.ndarray:
+
+        def resample_curve(c: np.ndarray, num_points: int) -> np.ndarray:
+            if len(c) < 2:
+                return np.repeat(c[:1], num_points, axis=0)
             lens = np.insert(np.cumsum(np.linalg.norm(np.diff(c, axis=0), axis=1)), 0, 0.0)
-            s_eval = np.linspace(0.0, lens[-1], n_eval)
-            res = np.zeros((n_eval, 3), dtype=float)
+            s_eval = np.linspace(0.0, max(1e-4, lens[-1]), num_points)
+            res = np.zeros((num_points, 3), dtype=float)
             for i, s in enumerate(s_eval):
                 idx = min(len(lens) - 2, max(0, int(np.searchsorted(lens, s, side="right")) - 1))
                 r = (s - lens[idx]) / max(1e-4, lens[idx + 1] - lens[idx])
                 res[i] = c[idx] * (1.0 - r) + c[idx + 1] * r
             return res
 
-        acu_res = resample_curve(p_acu)
-        ref_res = resample_curve(p_ref)
+        acu_res = resample_curve(p_acu, n_eval)
+        ref_res = resample_curve(p_ref, n_eval)
 
-        diffs = np.linalg.norm(acu_res - ref_res, axis=1)
-        mae = float(np.mean(diffs))
-        hausdorff = float(np.max(diffs))
+        # True symmetric point-to-curve distances
+        # Dense resampling for sub-voxel curve-to-curve projection
+        dense_eval = 200
+        acu_dense = resample_curve(p_acu, dense_eval)
+        ref_dense = resample_curve(p_ref, dense_eval)
 
-        # Tangents
+        # d(p, ref) for each point in acu
+        # Shape: (dense_eval, dense_eval)
+        dist_matrix = np.linalg.norm(acu_dense[:, None, :] - ref_dense[None, :, :], axis=2)
+        d_acu_to_ref = np.min(dist_matrix, axis=1)  # (dense_eval,)
+        d_ref_to_acu = np.min(dist_matrix, axis=0)  # (dense_eval,)
+
+        symmetric_distances = np.concatenate([d_acu_to_ref, d_ref_to_acu])
+        mae = float(np.mean(d_acu_to_ref))
+        hausdorff_max = float(np.max(symmetric_distances))
+        hausdorff_95 = float(np.percentile(symmetric_distances, 95))
+
+        # Direction-aware tangent vectors (signed dot product, penalizing curve inversion)
         t_acu = np.gradient(acu_res, axis=0)
         t_acu /= (np.linalg.norm(t_acu, axis=1, keepdims=True) + 1e-6)
 
         t_ref = np.gradient(ref_res, axis=0)
         t_ref /= (np.linalg.norm(t_ref, axis=1, keepdims=True) + 1e-6)
 
-        cosines = np.abs(np.sum(t_acu * t_ref, axis=1))
-        mean_cos = float(np.mean(cosines))
+        signed_cosines = np.sum(t_acu * t_ref, axis=1)  # In [-1.0, 1.0]
+        mean_cos = float(np.mean(signed_cosines))
 
         # Lengths
         len_acu = float(np.sum(np.linalg.norm(np.diff(p_acu, axis=0), axis=1)))
@@ -187,11 +282,17 @@ print("VMTK Centerline Extraction Complete.")
         diff_len = abs(len_acu - len_ref)
         diff_len_pct = (diff_len / max(1e-3, len_ref)) * 100.0
 
-        passed = (mae <= mae_threshold_mm) and (mean_cos >= 0.90)
+        passed = (
+            (mae <= mae_threshold_mm) and
+            (hausdorff_95 <= h95_threshold_mm) and
+            (mean_cos >= tangent_cosine_threshold)
+        )
 
         details = (
-            f"Centerline Benchmark vs {method_name}: MAE Pos = {mae:.2f} mm (Threshold ≤ {mae_threshold_mm:.2f} mm), "
-            f"Hausdorff = {hausdorff:.2f} mm, Tangent Cosine = {mean_cos:.3f}, "
+            f"Centerline Benchmark vs {method_name}: MAE Pos = {mae:.2f} mm (Limit ≤ {mae_threshold_mm:.2f} mm), "
+            f"H95 = {hausdorff_95:.2f} mm (Limit ≤ {h95_threshold_mm:.2f} mm), "
+            f"H_max = {hausdorff_max:.2f} mm, "
+            f"Tangent Cosine = {mean_cos:.3f} (Limit ≥ {tangent_cosine_threshold:.2f}), "
             f"Length: AcuCalyx {len_acu:.1f} mm vs Ref {len_ref:.1f} mm (Δ: {diff_len_pct:.1f}%)."
         )
 
@@ -199,7 +300,8 @@ print("VMTK Centerline Extraction Complete.")
             method_name=method_name,
             num_sample_points=n_eval,
             mean_positional_error_mm=mae,
-            max_positional_error_mm=hausdorff,
+            max_positional_error_mm=hausdorff_max,
+            hausdorff_95_mm=hausdorff_95,
             tangent_cosine_alignment_mean=mean_cos,
             length_discrepancy_mm=diff_len,
             length_discrepancy_percent=diff_len_pct,

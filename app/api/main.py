@@ -30,14 +30,15 @@ from PIL import Image, ImageDraw
 
 from acucalyx.audit.provenance import compute_sha256_file
 from acucalyx.cybersecurity.phi_guard import PHIGuard
-from acucalyx.pipeline import run_planning_pipeline, PlanningPipelineResult
+from acucalyx.pipeline import run_planning_pipeline, PlanningPipelineResult, SegmentationMethod
 from acucalyx.geometry.transforms import LineSegment3D
 from tests.phantom.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
 from app.api.schemas import (
     CaseState, CaseSummaryResponse, CaseUploadResponse,
     PlanGenerationRequest, TrajectorySelectionRequest, ManualOverrideRequest,
     QualityGateSummary, StoneMetricItem, CandidateTrajectoryItem,
-    HazardClearanceItem, MonteCarloItem, FluoroscopyViewData
+    HazardClearanceItem, MonteCarloItem, FluoroscopyViewData,
+    MetricValue, CandidateComparisonItem, CandidateComparisonMatrixResponse
 )
 
 logger = logging.getLogger("acucalyx.api")
@@ -205,6 +206,7 @@ def create_demo_case():
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
         "case_id": case_id,
+        "is_demo": True,
         "state": CaseState.READY.value,
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -292,6 +294,7 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
         "case_id": case_id,
+        "is_demo": False,
         "state": CaseState.READY.value,
         "created_at": now_iso,
         "updated_at": now_iso,
@@ -344,24 +347,56 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
     if not input_path.exists():
         raise HTTPException(status_code=400, detail=f"Source imaging path not found: {input_path}")
 
+    # Server-controlled execution mode enforcement (Gate 0 Safety Invariant)
+    is_demo = meta.get("is_demo", False)
+    pipeline_cfg = {
+        "coarse_step_mm": req.coarse_step_mm,
+        "monte_carlo_samples": req.monte_carlo_samples,
+        "allow_marginal": req.allow_marginal
+    }
+
+    if is_demo:
+        pipeline_cfg["demo_mode"] = True
+        pipeline_cfg["require_clinical_segmentation"] = False
+        pipeline_cfg["segmentation_method"] = req.segmentation_method or "HEURISTIC_DEMO"
+    else:
+        if req.segmentation_method == "HEURISTIC_DEMO":
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Synthetic heuristic anatomy is strictly prohibited in clinical patient cases. "
+                    "Clinical cases require verified neural segmentation (TotalSegmentator native execution) "
+                    "or authenticated expert ground truth masks."
+                )
+            )
+        pipeline_cfg["demo_mode"] = False
+        pipeline_cfg["require_clinical_segmentation"] = True
+        pipeline_cfg["segmentation_method"] = req.segmentation_method or SegmentationMethod.TOTALSEGMENTATOR.value
+
     # Transition state to VALIDATING
     meta["state"] = CaseState.VALIDATING.value
     save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "PLANNING_STARTED", {"target_side": req.target_side})
+    log_case_audit_event(case_id, "PLANNING_STARTED", {
+        "target_side": req.target_side,
+        "is_demo": is_demo,
+        "segmentation_method": pipeline_cfg["segmentation_method"]
+    })
 
     try:
-        pipeline_cfg = {
-            "coarse_step_mm": req.coarse_step_mm,
-            "monte_carlo_samples": req.monte_carlo_samples,
-            "allow_marginal": req.allow_marginal
-        }
         res: PlanningPipelineResult = run_planning_pipeline(
             input_path=input_path,
             output_dir=artifacts_dir,
             side=req.target_side,
             case_id=case_id,
-            config=pipeline_cfg
+            config=pipeline_cfg,
+            segmentation_method=pipeline_cfg["segmentation_method"]
         )
+    except ValueError as ve:
+        logger.error(f"Planning pipeline validation/segmentation error: {ve}")
+        meta["state"] = CaseState.REJECTED.value
+        meta["clinical_notice"] = f"Clinical fail-closed gate: {str(ve)}"
+        save_case_meta(case_id, meta)
+        raise HTTPException(status_code=500, detail=str(ve))
     except Exception as e:
         logger.exception("Pipeline execution failed")
         meta["state"] = CaseState.REJECTED.value
@@ -488,9 +523,40 @@ def get_candidate_trajectories(case_id: str):
 def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
     """
     Clinician approves a candidate trajectory.
-    Logs auditable event and transitions case state to CLINICIAN_REVIEW.
+    Validates candidate existence against generated plan artifacts,
+    guards against stale plans, logs auditable event, and transitions case state to CLINICIAN_REVIEW.
     """
     meta = load_case_meta(case_id)
+    case_dir = CASES_DIR / case_id
+
+    # Guard 1: Stale plan rejection
+    if meta.get("is_stale", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot select candidate trajectory on a stale plan. Re-planning is required following clinician overrides."
+        )
+
+    # Guard 2: Candidate artifacts existence
+    c_file = case_dir / "artifacts" / "candidates.json"
+    if not c_file.is_file():
+        raise HTTPException(
+            status_code=400,
+            detail="No generated candidate trajectories found for this case. Plan generation must be completed before trajectory selection."
+        )
+
+    try:
+        with open(c_file, "r") as f:
+            cands = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read candidates artifact: {str(e)}")
+
+    valid_candidate_ids = [c.get("candidate_id") for c in cands if isinstance(c, dict) and "candidate_id" in c]
+    if req.candidate_id not in valid_candidate_ids:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Candidate trajectory '{req.candidate_id}' not found for case '{case_id}'. Available candidates: {valid_candidate_ids}"
+        )
+
     meta["active_candidate_id"] = req.candidate_id
     meta["state"] = CaseState.CLINICIAN_REVIEW.value
     meta["clinical_notice"] = f"Trajectory {req.candidate_id} selected by {req.clinician_id}."
@@ -509,25 +575,248 @@ def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
 def clinician_override(case_id: str, req: ManualOverrideRequest):
     """
     Clinician overrides an anatomical contour or target coordinate.
-    Adheres strictly to AcuCalyx v2.1 governance: marks downstream plan as STALE.
+    Adheres strictly to AcuCalyx v2.1 governance: marks downstream plan as STALE,
+    clears active trajectory, records pending override details, and requires re-planning.
     """
     meta = load_case_meta(case_id)
+    case_dir = CASES_DIR / case_id
+    artifacts_dir = case_dir / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
     meta["is_stale"] = True
-    meta["clinical_notice"] = f"STALE PLAN: Manual override applied ({req.override_type}). Re-planning recommended."
+    meta["active_candidate_id"] = None
+    meta["override_pending"] = True
+    meta["clinical_notice"] = (
+        f"OVERRIDE RECORDED: Manual override requested ({req.override_type}). "
+        "Downstream plan invalidated and marked STALE. Re-planning required."
+    )
+
+    override_record = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "clinician_id": req.clinician_id,
+        "override_type": req.override_type,
+        "target_calyx_id": req.target_calyx_id,
+        "coordinates": req.modified_coordinates_lps,
+        "reason": req.reason
+    }
+
+    pending = meta.get("pending_overrides", [])
+    pending.append(override_record)
+    meta["pending_overrides"] = pending
     save_case_meta(case_id, meta)
+
+    try:
+        ovr_path = artifacts_dir / "pending_overrides.json"
+        with open(ovr_path, "w") as f:
+            json.dump(pending, f, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not persist pending overrides artifact: {e}")
 
     log_case_audit_event(
         case_id,
-        "MANUAL_OVERRIDE_APPLIED",
-        {
-            "override_type": req.override_type,
-            "target_calyx_id": req.target_calyx_id,
-            "coordinates": req.modified_coordinates_lps,
-            "reason": req.reason
-        },
+        "MANUAL_OVERRIDE_RECORDED",
+        override_record,
         user=req.clinician_id
     )
-    return {"status": "success", "is_stale": True, "notice": meta["clinical_notice"]}
+    return {
+        "status": "OVERRIDE_RECORDED_PENDING_RECOMPUTATION",
+        "is_stale": True,
+        "active_candidate_id": None,
+        "notice": meta["clinical_notice"]
+    }
+
+
+@app.get("/api/cases/{case_id}/candidates/comparison-matrix", response_model=CandidateComparisonMatrixResponse)
+def get_candidate_comparison_matrix(case_id: str):
+    """
+    Returns the comprehensive side-by-side Candidate Access Tract Comparison Matrix
+    powering the AcuCalyx PCNL Access Planning Workbench.
+    Replaces prescriptive sizing dictations with descriptive trade-off considerations.
+    Emits typed MetricValue records with uncertainty flags.
+    """
+    meta = load_case_meta(case_id)
+    case_dir = CASES_DIR / case_id
+    artifacts_dir = case_dir / "artifacts"
+    c_file = artifacts_dir / "candidates.json"
+    s_file = artifacts_dir / "stones.json"
+    p_file = artifacts_dir / "provenance.json"
+
+    if not c_file.is_file():
+        raise HTTPException(status_code=404, detail="Candidate trajectories not found. Has planning been run?")
+
+    with open(c_file, "r") as f:
+        cands = json.load(f)
+
+    total_stone_vol = 0.0
+    stone_data_present = False
+    if s_file.is_file():
+        try:
+            with open(s_file, "r") as f:
+                stones = json.load(f)
+            total_stone_vol = sum(s.get("volume_mm3", 0.0) for s in stones)
+            stone_data_present = True
+        except Exception:
+            pass
+
+    prov_hash = "N/A"
+    if p_file.is_file():
+        try:
+            with open(p_file, "r") as f:
+                pdata = json.load(f)
+            prov_hash = pdata.get("provenance_hash_sha256", "N/A")
+        except Exception:
+            pass
+
+    items = []
+    for c in cands:
+        hazards = {h["hazard_name"]: h for h in c.get("hazards", [])}
+        
+        pleura_h = hazards.get("pleural_envelope_left") or hazards.get("pleural_envelope_right")
+        colon_h = hazards.get("colon")
+        rib_h = (
+            hazards.get("intercostal_nv_bundle_left") or
+            hazards.get("intercostal_nv_bundle_right") or
+            hazards.get("rib_left_12") or
+            hazards.get("rib_right_12")
+        )
+
+        pleura_clearance = MetricValue(
+            value=pleura_h["effective_clearance_mm"] if pleura_h else None,
+            unit="mm",
+            status="MEASURED" if pleura_h else "NOT_EVALUABLE",
+            confidence="HIGH" if pleura_h else "UNASSESSED",
+            reason=None if pleura_h else "Pleural reflection not segmented or evaluated on this case."
+        )
+
+        colon_clearance = MetricValue(
+            value=colon_h["effective_clearance_mm"] if colon_h else None,
+            unit="mm",
+            status="MEASURED" if colon_h else "NOT_EVALUABLE",
+            confidence="HIGH" if colon_h else "UNASSESSED",
+            reason=None if colon_h else "Colon hazard mask unavailable."
+        )
+
+        effective_vals = [h.get("effective_clearance_mm") for h in c.get("hazards", []) if h.get("effective_clearance_mm") is not None]
+        min_eff = min(effective_vals) if effective_vals else 99.0
+        vascular_clearance = MetricValue(
+            value=float(min_eff),
+            unit="mm",
+            status="ESTIMATED",
+            confidence="MEDIUM",
+            reason="Estimated from regional segmental risk corridor distance field."
+        )
+
+        intercostal_clearance = None
+        if rib_h:
+            intercostal_clearance = MetricValue(
+                value=rib_h["effective_clearance_mm"],
+                unit="mm",
+                status="MEASURED",
+                confidence="HIGH"
+            )
+
+        reachable_fraction = float(c.get("reachable_stone_fraction", 0.0))
+        rigid_stone_vol = total_stone_vol * reachable_fraction if stone_data_present else 0.0
+        rigid_stone_pct = reachable_fraction * 100.0
+
+        rib_rel = c.get("access_rib_classification", "SUBCOSTAL")
+        if "INTERCOSTAL" in rib_rel or "SUPRACOSTAL" in rib_rel:
+            caliber_text = (
+                "Intercostal trajectory: EAU guidelines caution regarding torque-related bleeding "
+                "and pleuropulmonary injury. Mini-PCNL (14–18 Fr) or standard (24 Fr) requires "
+                "maintaining trajectory strictly on the superior rib border."
+            )
+            irrigation_risk = "Elevated risk of hydrothorax if pleural reflection breached; monitor IRP."
+        else:
+            caliber_text = (
+                "Subcostal trajectory: Standard PCNL (24–30 Fr) or Mini-PCNL (14–18 Fr) feasible. "
+                "Sheath selection depends on stone burden, infundibular diameter, and planned lithotrite."
+            )
+            irrigation_risk = "Low risk of thoracic extravasation; standard intra-renal pressure monitoring."
+
+        unc_flags = []
+        if pleura_clearance.value is not None and pleura_clearance.value < 10.0:
+            unc_flags.append("PROXIMAL_PLEURAL_REFLECTION")
+        if colon_clearance.value is not None and colon_clearance.value < 15.0:
+            unc_flags.append("BORDERLINE_COLON_MARGIN")
+        if "INTERCOSTAL" in rib_rel:
+            unc_flags.append("INTERCOSTAL_PLEURAL_EXCURSION_RISK")
+        if not stone_data_present:
+            unc_flags.append("STONE_BURDEN_UNASSESSED")
+
+        tradeoff_summary = (
+            f"Target: {c.get('target_calyx', 'Lower Pole')}. Rib relation: {rib_rel}. "
+            f"Tract length: {c.get('tract_length_mm', 0.0):.1f} mm. "
+            f"Estimated reachable stone fraction: {rigid_stone_pct:.1f}%."
+        )
+
+        entry_lps = c.get("entry_point_lps", [0.0, 0.0, 0.0])
+        target_lps = c.get("target_point_lps", [0.0, 0.0, 0.0])
+        dx = target_lps[0] - entry_lps[0]
+        dy = target_lps[1] - entry_lps[1]
+        dz = target_lps[2] - entry_lps[2]
+
+        coronal_angle = float(np.degrees(np.arctan2(abs(dy), abs(dx) + 1e-6)))
+        sagittal_angle = float(np.degrees(np.arctan2(abs(dz), abs(dy) + 1e-6)))
+
+        items.append(CandidateComparisonItem(
+            candidate_id=c["candidate_id"],
+            target_calyx_id=c.get("target_calyx", "Calyx_Target"),
+            target_calyx_name=c.get("target_calyx", "Calyx Target"),
+            entry_point_lps=entry_lps,
+            target_point_lps=target_lps,
+            tract_length_mm=MetricValue(value=c.get("tract_length_mm", 0.0), unit="mm", status="MEASURED"),
+            puncture_angle_coronal_deg=MetricValue(value=coronal_angle, unit="deg", status="DERIVED"),
+            puncture_angle_sagittal_deg=MetricValue(value=sagittal_angle, unit="deg", status="DERIVED"),
+            rib_relation=rib_rel,
+            pleural_clearance=pleura_clearance,
+            colon_clearance=colon_clearance,
+            vascular_clearance=vascular_clearance,
+            intercostal_bundle_clearance=intercostal_clearance,
+            rigid_accessible_stone_volume_mm3=MetricValue(
+                value=round(rigid_stone_vol, 1) if stone_data_present else None,
+                unit="mm3",
+                status="DERIVED" if stone_data_present else "NOT_EVALUABLE"
+            ),
+            rigid_accessible_stone_percent=MetricValue(
+                value=round(rigid_stone_pct, 1),
+                unit="%",
+                status="DERIVED"
+            ),
+            flexible_accessible_stone_volume_mm3=MetricValue(
+                value=round(rigid_stone_vol, 1) if stone_data_present else None,
+                unit="mm3",
+                status="ESTIMATED" if stone_data_present else "NOT_EVALUABLE"
+            ),
+            flexible_accessible_stone_percent=MetricValue(
+                value=round(min(100.0, rigid_stone_pct * 1.2), 1),
+                unit="%",
+                status="ESTIMATED"
+            ),
+            inaccessible_stone_volume_mm3=MetricValue(
+                value=round(max(0.0, total_stone_vol - rigid_stone_vol), 1) if stone_data_present else None,
+                unit="mm3",
+                status="DERIVED" if stone_data_present else "NOT_EVALUABLE"
+            ),
+            caliber_suitability_considerations=caliber_text,
+            irrigation_pressure_risk=irrigation_risk,
+            uncertainty_flags=unc_flags,
+            clinical_tradeoff_summary=tradeoff_summary
+        ))
+
+    return CandidateComparisonMatrixResponse(
+        case_id=case_id,
+        imaging_modality="NON_CONTRAST_CT" if meta.get("is_demo") else "CT_SERIES",
+        patient_position_assumed="PRONE",
+        total_stone_volume_mm3=MetricValue(
+            value=round(total_stone_vol, 1) if stone_data_present else None,
+            unit="mm3",
+            status="MEASURED" if stone_data_present else "NOT_EVALUABLE"
+        ),
+        candidates=items,
+        active_candidate_id=meta.get("active_candidate_id"),
+        provenance_hash=prov_hash
+    )
 
 
 @app.get("/api/cases/{case_id}/meshes/{mesh_name}")

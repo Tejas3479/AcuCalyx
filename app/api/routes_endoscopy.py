@@ -56,14 +56,28 @@ from acucalyx.endoscopy.reachability_validator import (
     evaluate_m15_validation_gate,
 )
 
+import re
+import tempfile
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 CASES_DIR = BASE_DIR / "data" / "cases"
 
 router = APIRouter(prefix="/api/cases", tags=["Endoscopic Reachability & Virtual Nephroscopy"])
 
 
+def _validate_case_id(case_id: str) -> str:
+    """Validates that case_id is a secure identifier and prevents directory traversal."""
+    if not re.match(r"^[A-Za-z0-9_-]+$", case_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid case identifier '{case_id}'. Must contain only alphanumeric characters, hyphens, or underscores."
+        )
+    return case_id
+
+
 def _get_case_graph(case_id: str, demo_mode: bool = False) -> CollectingSystemGraph:
     """Builds or loads the collecting system graph for a specified case."""
+    _validate_case_id(case_id)
     graph_path = CASES_DIR / case_id / "artifacts" / "graph.json"
     if graph_path.is_file():
         try:
@@ -599,7 +613,42 @@ async def get_m15_validation_gate_report(
     manifest_path: Optional[str] = Query(None, description="Optional path to locked reference manifest JSON")
 ) -> Dict[str, Any]:
     """Milestone M15-V agreement, calibration, and physical concordance report."""
-    report = evaluate_m15_validation_gate(manifest_path=manifest_path)
+    _validate_case_id(case_id)
+    safe_manifest_path: Optional[Path] = None
+    if manifest_path is not None:
+        p = Path(manifest_path)
+        if ".." in p.parts:
+            raise HTTPException(status_code=400, detail="Path traversal sequences ('..') are strictly prohibited in manifest path.")
+        
+        if not p.is_absolute():
+            resolved = (BASE_DIR / p).resolve()
+        else:
+            resolved = p.resolve()
+
+        # Confine manifest path to project directory or system temp directory
+        temp_dir = Path(tempfile.gettempdir()).resolve()
+        base_dir_resolved = BASE_DIR.resolve()
+        is_in_base = False
+        is_in_temp = False
+        try:
+            resolved.relative_to(base_dir_resolved)
+            is_in_base = True
+        except ValueError:
+            pass
+        try:
+            resolved.relative_to(temp_dir)
+            is_in_temp = True
+        except ValueError:
+            pass
+
+        if not (is_in_base or is_in_temp):
+            raise HTTPException(status_code=403, detail="Manifest path must be confined within the application directory.")
+
+        if resolved.suffix.lower() != ".json":
+            raise HTTPException(status_code=400, detail="Manifest file must be a JSON document (.json).")
+        safe_manifest_path = resolved
+
+    report = evaluate_m15_validation_gate(manifest_path=safe_manifest_path)
     ipa_dict = None
     if report.ipa_validation:
         ipa_dict = {

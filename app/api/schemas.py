@@ -115,6 +115,7 @@ class PlanGenerationRequest(BaseModel):
     coarse_step_mm: float = Field(default=15.0, description="Flank skin sampling step")
     monte_carlo_samples: int = Field(default=200, description="Stochastic perturbation iterations")
     allow_marginal: bool = Field(default=False, description="Proceed with marginal DICOM quality")
+    segmentation_method: Optional[str] = Field(default=None, description="Explicit segmentation backend ('TOTALSEGMENTATOR' or 'HEURISTIC_DEMO')")
 
 
 class TrajectorySelectionRequest(BaseModel):
@@ -136,3 +137,63 @@ class CaseUploadResponse(BaseModel):
     state: CaseState
     message: str
     input_file_count: int
+
+
+class MetricValue(BaseModel):
+    """
+    Typed metric result with explicit provenance, units, and uncertainty status.
+    Prevents scalar-float forcing when anatomy is unobserved or not evaluable.
+    """
+    value: Optional[float] = None
+    unit: str = "mm"
+    status: str = "MEASURED"  # 'MEASURED', 'DERIVED', 'ESTIMATED', 'UNCERTAIN', 'NOT_EVALUABLE'
+    confidence: str = "HIGH"  # 'HIGH', 'MEDIUM', 'LOW', 'UNASSESSED'
+    reason: Optional[str] = None
+
+
+class CandidateComparisonItem(BaseModel):
+    """
+    Side-by-side comparative record for a candidate PCNL access tract.
+    Replaces prescriptive sizing dictations with descriptive trade-off considerations.
+    """
+    candidate_id: str
+    target_calyx_id: str
+    target_calyx_name: str
+    entry_point_lps: List[float]
+    target_point_lps: List[float]
+    tract_length_mm: MetricValue
+    puncture_angle_coronal_deg: MetricValue
+    puncture_angle_sagittal_deg: MetricValue
+    rib_relation: str
+    pleural_clearance: MetricValue
+    colon_clearance: MetricValue
+    vascular_clearance: MetricValue
+    intercostal_bundle_clearance: Optional[MetricValue] = None
+    rigid_accessible_stone_volume_mm3: MetricValue
+    rigid_accessible_stone_percent: MetricValue
+    flexible_accessible_stone_volume_mm3: MetricValue
+    flexible_accessible_stone_percent: MetricValue
+    inaccessible_stone_volume_mm3: MetricValue
+    caliber_suitability_considerations: str
+    irrigation_pressure_risk: str
+    uncertainty_flags: List[str] = []
+    clinical_tradeoff_summary: str
+
+
+class CandidateComparisonMatrixResponse(BaseModel):
+    """
+    Unified multi-tract comparative workbench model with clinical boundaries.
+    """
+    case_id: str
+    imaging_modality: str
+    patient_position_assumed: str
+    total_stone_volume_mm3: MetricValue
+    candidates: List[CandidateComparisonItem]
+    active_candidate_id: Optional[str] = None
+    provenance_hash: str
+    disclaimer: str = (
+        "PREOPERATIVE GEOMETRIC ESTIMATE ONLY — NOT AN INTRAOPERATIVE MAP. "
+        "Candidate comparisons and clearance estimates are computational decision support, "
+        "not guarantees of procedural safety, reachability, or stone-free status."
+    )
+

@@ -25,7 +25,13 @@ from app.api.main import app
 from acucalyx.endoscopy.reachability_validator import (
     evaluate_m15_validation_gate,
     compute_icc_2_1,
+    compute_continuous_agreement,
+    compute_classification_agreement,
     generate_synthetic_m15v_test_data,
+)
+from acucalyx.endoscopy.vmtk_benchmark import (
+    VMTKBenchmarkHarness,
+    CenterlineBenchmarkMetrics,
 )
 from acucalyx.integrations.totalsegmentator_adapter import (
     TotalSegmentatorAdapter,
@@ -360,3 +366,208 @@ class TestM1501EvidenceGateAcceptance:
                 segmentation_method="TOTALSEGMENTATOR",
                 config={"demo_mode": False, "require_clinical_segmentation": True}
             )
+
+    def test_check_15_icc_degenerate_zero_variance_fails_closed(self):
+        """Check 15: compute_icc_2_1 fails closed on degenerate zero-variance matrix."""
+        # 10 cases, 3 raters, identical constant scores
+        zero_var = np.full((10, 3), 50.0)
+        res = compute_icc_2_1(zero_var, "Zero Variance Test")
+        assert res.passed is False
+        assert res.icc_value is None
+        assert "DEGENERATE_ZERO_VARIANCE" in res.agreement_interpretation
+
+        # Non-finite values in matrix
+        nan_matrix = np.full((10, 3), 50.0)
+        nan_matrix[0, 0] = np.nan
+        res_nan = compute_icc_2_1(nan_matrix, "NaN Matrix Test")
+        assert res_nan.passed is False
+        assert res_nan.icc_value is None
+        assert "NON_FINITE_VALUES" in res_nan.agreement_interpretation
+
+    def test_check_16_continuous_and_classification_input_validation(self):
+        """Check 16: Input validation on shape mismatches and non-finite values."""
+        # Continuous agreement shape mismatch
+        res_diff_shape = compute_continuous_agreement(
+            np.array([1.0, 2.0]), np.array([1.0, 2.0, 3.0]), "Mismatch", 5.0
+        )
+        assert res_diff_shape.passed is False
+        assert "Shape mismatch" in res_diff_shape.details
+
+        # Continuous agreement with NaN
+        res_nan = compute_continuous_agreement(
+            np.array([1.0, np.nan]), np.array([1.0, 2.0]), "NaN", 5.0
+        )
+        assert res_nan.passed is False
+        assert "Non-finite values" in res_nan.details
+
+        # Classification agreement shape mismatch
+        res_class_mismatch = compute_classification_agreement(
+            np.array([True, False]), np.array([True])
+        )
+        assert res_class_mismatch.passed is False
+
+        # Classification agreement sensitivity/specificity threshold check (< 0.90 fails)
+        pred_low_sens = np.array([True] * 4 + [False] * 1 + [False] * 5)
+        ref_low_sens = np.array([True] * 5 + [False] * 5)
+        res_sens = compute_classification_agreement(pred_low_sens, ref_low_sens, kappa_threshold=0.5)
+        assert res_sens.sensitivity == 0.80
+        assert res_sens.passed is False
+
+    def test_check_17_manifest_example_only_fails_closed(self, tmp_path):
+        """Check 17: Manifest marked as example_only=True fails closed."""
+        p = tmp_path / "example_manifest.json"
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump({
+                "manifest_identifier": "EXAMPLE-MANIFEST",
+                "example_only": True,
+                "cases": []
+            }, f)
+        report = evaluate_m15_validation_gate(manifest_path=p)
+        assert report.status == "NOT_EVALUABLE"
+        assert report.overall_gate_passed is False
+        assert "example_only=True" in report.summary_findings
+
+    def test_check_18_manifest_placeholder_hash_fails_closed(self, tmp_path):
+        """Check 18: Manifest containing placeholder or empty-file hash fails closed."""
+        # 1. Ellipsis placeholder
+        p_dots = tmp_path / "dots_manifest.json"
+        with open(p_dots, "w", encoding="utf-8") as f:
+            json.dump({
+                "manifest_identifier": "TEST-MANIFEST",
+                "example_only": False,
+                "cases": [
+                    {
+                        "case_id": "ACU_CTU_001",
+                        "ct_volume_sha256": "...",
+                        "morphometry_ground_truth": {"UP": {"ipa_deg": 50.0, "iw_min_mm": 5.0, "reachable": True}}
+                    }
+                ]
+            }, f)
+        rep_dots = evaluate_m15_validation_gate(manifest_path=p_dots)
+        assert rep_dots.status == "NOT_EVALUABLE"
+        assert "placeholder/empty SHA-256 digest" in rep_dots.summary_findings
+
+        # 2. Empty-file SHA-256
+        empty_h = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        p_empty = tmp_path / "empty_h_manifest.json"
+        with open(p_empty, "w", encoding="utf-8") as f:
+            json.dump({
+                "manifest_identifier": "TEST-MANIFEST",
+                "example_only": False,
+                "cases": [
+                    {
+                        "case_id": "ACU_CTU_001",
+                        "ct_volume_sha256": empty_h,
+                        "morphometry_ground_truth": {"UP": {"ipa_deg": 50.0, "iw_min_mm": 5.0, "reachable": True}}
+                    }
+                ]
+            }, f)
+        rep_empty = evaluate_m15_validation_gate(manifest_path=p_empty)
+        assert rep_empty.status == "NOT_EVALUABLE"
+        assert "placeholder/empty SHA-256 digest" in rep_empty.summary_findings
+
+    def test_check_19_manifest_nested_cases_evaluation(self, tmp_path):
+        """Check 19: Valid nested cases[] manifest successfully parses and evaluates."""
+        data = generate_synthetic_m15v_test_data()
+        dummy_file = tmp_path / "ct_vol.nii.gz"
+        dummy_file.write_bytes(b"DATA_CT_VOLUME_CONTENT")
+        import hashlib
+        real_hash = hashlib.sha256(b"DATA_CT_VOLUME_CONTENT").hexdigest()
+
+        # Build nested cases
+        cases = []
+        for i in range(len(data["ipa_ref"])):
+            cases.append({
+                "case_id": f"ACU_CASE_{i:03d}",
+                "ct_volume_nifti": str(dummy_file),
+                "ct_volume_sha256": real_hash,
+                "morphometry_ground_truth": {
+                    "UP": {
+                        "ipa_deg": float(data["ipa_ref"][i]),
+                        "iw_min_mm": float(data["iw_ref"][i]),
+                        "reachable": bool(data["class_ref"][i])
+                    }
+                },
+                "morphometry_predictions": {
+                    "UP": {
+                        "ipa_deg": float(data["ipa_pred"][i]),
+                        "iw_min_mm": float(data["iw_pred"][i]),
+                        "reachable": bool(data["class_pred"][i])
+                    }
+                },
+                "rater_ipa_measurements": data["multi_expert_ratings"][i].tolist()
+            })
+
+        manifest = {
+            "manifest_identifier": "ACU-M15-NESTED-TEST",
+            "example_only": False,
+            "cases": cases,
+            "phantom_measurements": data["phantom_measurements"]
+        }
+        man_path = tmp_path / "nested_manifest.json"
+        with open(man_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=2)
+
+        report = evaluate_m15_validation_gate(manifest_path=man_path)
+        assert report.status == "PASS_FOR_NONCLINICAL_RESEARCH"
+        assert report.overall_gate_passed is True
+        assert report.ipa_validation.sample_size == len(data["ipa_ref"])
+
+    def test_check_20_phantom_tip_error_and_loading_concordance(self):
+        """Check 20: Phantom evaluation verifies loaded tool and tip error tolerance (<= 1.0 mm)."""
+        data = generate_synthetic_m15v_test_data()
+
+        # Deflection with tip error > 1.0 mm on accessible calyx fails concordance
+        data_bad_tip = dict(data)
+        data_bad_tip["phantom_measurements"] = {
+            "PHANTOM_M15_01_FAVORABLE": {
+                "UP": {"is_accessible": True, "tip_error_mm": 1.45},  # Exceeds 1.0 mm tolerance
+                "MP": {"is_accessible": True, "tip_error_mm": 0.40},
+                "LP": {"is_accessible": True, "tip_error_mm": 0.50},
+            },
+            "PHANTOM_M15_02_MODERATE": {
+                "UP": {"is_accessible": True, "tip_error_mm": 0.45},
+                "MP": {"is_accessible": True, "tip_error_mm": 0.40},
+                "LP": {"is_accessible": True, "tip_error_mm": 0.50},
+            },
+            "PHANTOM_M15_03_ACUTE_CHALLENGE": {
+                "UP": {"is_accessible": True, "tip_error_mm": 0.50},
+                "MP": {"is_accessible": True, "tip_error_mm": 0.45},
+                "LP": {"is_accessible": False, "tip_error_mm": 1.50},
+            }
+        }
+        rep_tip = evaluate_m15_validation_gate(**data_bad_tip)
+        assert rep_tip.phantom_concordance.passed is False
+        assert rep_tip.phantom_concordance.critical_discrepancies > 0
+
+    def test_check_21_api_path_traversal_and_case_id_sanitization(self):
+        """Check 21: FastAPI endpoint rejects path traversal sequences and invalid case IDs."""
+        # 1. Path traversal in manifest_path (HTTP 400)
+        resp_trav = client.get(
+            "/api/cases/test_case/endoscopy/validation-gate",
+            params={"manifest_path": "../../secret.json"}
+        )
+        assert resp_trav.status_code == 400
+        assert "Path traversal" in resp_trav.json()["detail"]
+
+        # 2. Invalid case_id with traversal attempts (HTTP 400)
+        resp_case = client.get("/api/cases/case..traversal/endoscopy/validation-gate")
+        assert resp_case.status_code == 400
+        assert "Invalid case identifier" in resp_case.json()["detail"]
+
+    def test_check_22_vmtk_symmetric_h95_and_signed_tangent(self):
+        """Check 22: VMTK benchmark computes true symmetric H95 and signed direction-aware tangent cosine."""
+        # Identical curves: MAE = 0, H95 = 0, Cosine = 1.0
+        line_a = np.array([[0.0, 0.0, float(z)] for z in range(30)])
+        line_b = line_a.copy()
+        met_same = VMTKBenchmarkHarness.compare_centerlines(line_a, line_b)
+        assert met_same.passed is True
+        assert met_same.mean_positional_error_mm < 1e-4
+        assert met_same.hausdorff_95_mm < 1e-4
+        assert pytest.approx(met_same.tangent_cosine_alignment_mean, 1e-3) == 1.0
+
+        # Reversed curve: Tangents are anti-parallel -> signed cosine < 0 -> passed is False
+        line_rev = line_a[::-1]
+        met_rev = VMTKBenchmarkHarness.compare_centerlines(line_a, line_rev)
+        assert met_rev.tangent_cosine_alignment_mean < 0.0
+        assert met_rev.passed is False

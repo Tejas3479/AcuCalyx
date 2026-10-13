@@ -190,3 +190,149 @@ def test_api_phantom_and_rehearsal_endpoints():
     assert summary["counter_puncture_count"] == 0
     assert summary["counter_puncture_clopper_pearson_95_upper_pct"] <= 95.0
 
+
+def test_api_comparison_matrix_and_guards():
+    """
+    Verifies Candidate Comparison Matrix API endpoint, strict candidate selection validation,
+    stale plan rejection, and clinician override recomputation state.
+    """
+    # 1. Create demo case
+    create_res = client.post("/api/cases/demo")
+    assert create_res.status_code == 200
+    case_id = create_res.json()["case_id"]
+
+    # 2. Candidate selection before plan generation must fail with HTTP 400
+    premature_sel = client.post(
+        f"/api/cases/{case_id}/select",
+        json={"candidate_id": "CAND_01", "clinician_id": "Surgeon_Test"}
+    )
+    assert premature_sel.status_code == 400
+    assert "Plan generation must be completed" in premature_sel.json()["detail"]
+
+    # 3. Run planning pipeline on demo case
+    plan_res = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "left", "coarse_step_mm": 15.0, "monte_carlo_samples": 20}
+    )
+    assert plan_res.status_code == 200
+    assert plan_res.json()["state"] == "PLAN_GENERATED"
+
+    # 4. Fetch Candidate Access Tract Comparison Matrix
+    matrix_res = client.get(f"/api/cases/{case_id}/candidates/comparison-matrix")
+    assert matrix_res.status_code == 200
+    matrix = matrix_res.json()
+    assert matrix["case_id"] == case_id
+    assert "PREOPERATIVE GEOMETRIC ESTIMATE ONLY" in matrix["disclaimer"]
+    assert len(matrix["candidates"]) >= 1
+
+    cand0 = matrix["candidates"][0]
+    # Verify typed MetricValue contracts
+    assert "tract_length_mm" in cand0
+    assert cand0["tract_length_mm"]["unit"] == "mm"
+    assert cand0["tract_length_mm"]["status"] in ("MEASURED", "DERIVED", "ESTIMATED")
+    assert cand0["pleural_clearance"]["status"] in ("MEASURED", "NOT_EVALUABLE")
+    assert "caliber_suitability_considerations" in cand0
+    assert "irrigation_pressure_risk" in cand0
+    assert "clinical_tradeoff_summary" in cand0
+
+    valid_cand_id = cand0["candidate_id"]
+
+    # 5. Selecting non-existent candidate must return HTTP 404
+    bad_sel = client.post(
+        f"/api/cases/{case_id}/select",
+        json={"candidate_id": "NON_EXISTENT_TRACT_999", "clinician_id": "Surgeon_Test"}
+    )
+    assert bad_sel.status_code == 404
+    assert "not found" in bad_sel.json()["detail"]
+
+    # 6. Selecting valid candidate succeeds
+    good_sel = client.post(
+        f"/api/cases/{case_id}/select",
+        json={"candidate_id": valid_cand_id, "clinician_id": "Surgeon_Test"}
+    )
+    assert good_sel.status_code == 200
+    assert good_sel.json()["active_candidate_id"] == valid_cand_id
+
+    # 7. Apply manual clinician override: marks plan stale and clears active candidate
+    ovr_res = client.post(
+        f"/api/cases/{case_id}/override",
+        json={
+            "override_type": "CALYX_TARGET",
+            "modified_coordinates_lps": [10.0, -20.0, 30.0],
+            "reason": "Expanding safety clearance from ribs",
+            "clinician_id": "Surgeon_Test"
+        }
+    )
+    assert ovr_res.status_code == 200
+    ovr_data = ovr_res.json()
+    assert ovr_data["status"] == "OVERRIDE_RECORDED_PENDING_RECOMPUTATION"
+    assert ovr_data["is_stale"] is True
+    assert ovr_data["active_candidate_id"] is None
+
+    # 8. Selecting candidate on stale plan must fail with HTTP 409
+    stale_sel = client.post(
+        f"/api/cases/{case_id}/select",
+        json={"candidate_id": valid_cand_id, "clinician_id": "Surgeon_Test"}
+    )
+    assert stale_sel.status_code == 409
+    assert "stale plan" in stale_sel.json()["detail"].lower()
+
+
+def test_patient_case_fails_closed_without_neural_weights(tmp_path):
+    """
+    Verifies that patient cases (is_demo == False) strictly fail closed and NEVER default
+    to synthetic heuristic anatomy when TotalSegmentator native runner/weights are absent.
+    """
+    from datetime import datetime, timezone
+    from app.api.main import save_case_meta, CASES_DIR
+    from tests.phantom.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
+
+    case_id = f"PATIENT_TEST_{datetime.now().strftime('%H%M%S')}"
+    case_dir = CASES_DIR / case_id
+    raw_dir = case_dir / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+
+    vol, spatial, _ = generate_synthetic_pcnl_phantom(grid_shape=(64, 64, 40), spacing_mm=(1.5, 1.5, 1.5))
+    nii_path = raw_dir / "patient_ct.nii.gz"
+    save_phantom_to_nifti(vol, spatial, nii_path)
+
+    # Register as clinical patient case (is_demo = False)
+    meta = {
+        "case_id": case_id,
+        "is_demo": False,
+        "state": "READY",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "input_path": str(nii_path),
+        "target_side": "left",
+        "is_stale": False,
+        "active_candidate_id": None,
+        "stone_count": 0,
+        "candidate_count": 0,
+        "clinical_notice": "Real clinical patient intake."
+    }
+    save_case_meta(case_id, meta)
+
+    # Attempt 1: Explicit request for heuristic demo anatomy on patient case -> HTTP 400
+    res_heuristic = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "left", "segmentation_method": "HEURISTIC_DEMO"}
+    )
+    assert res_heuristic.status_code == 400
+    assert "Synthetic heuristic anatomy is strictly prohibited in clinical patient cases" in res_heuristic.json()["detail"]
+
+    # Attempt 2: Standard planning pipeline -> must fail closed (HTTP 500) if native TotalSegmentator weights not mounted
+    # and mark case as REJECTED rather than silently substituting synthetic anatomy.
+    res_plan = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "left"}
+    )
+    # TotalSegmentator is not running in native CLI mode in this test environment
+    assert res_plan.status_code == 500
+    assert "Clinical segmentation failed" in res_plan.json()["detail"] or "prohibited" in res_plan.json()["detail"]
+
+    # Confirm case state transitioned to REJECTED
+    st_res = client.get(f"/api/cases/{case_id}/status")
+    assert st_res.json()["state"] == "REJECTED"
+
+

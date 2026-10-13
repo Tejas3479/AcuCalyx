@@ -109,9 +109,24 @@ def compute_continuous_agreement(
 ) -> MorphometryValidationResult:
     """
     Computes MAE, RMSE, systematic bias, and Bland-Altman 95% limits of agreement.
+    Validates array dimensions and finite numerical properties.
     """
     p = np.asarray(pred_vals, dtype=float)
     r = np.asarray(ref_vals, dtype=float)
+    if p.shape != r.shape:
+        return MorphometryValidationResult(
+            parameter_name=param_name,
+            sample_size=0,
+            mean_absolute_error=0.0,
+            root_mean_square_error=0.0,
+            systematic_bias=0.0,
+            bland_altman_lower_limit_95=0.0,
+            bland_altman_upper_limit_95=0.0,
+            mae_threshold=mae_threshold,
+            passed=False,
+            details=f"Shape mismatch: prediction shape {p.shape} != reference shape {r.shape}",
+        )
+
     n = len(p)
     if n == 0:
         return MorphometryValidationResult(
@@ -125,6 +140,20 @@ def compute_continuous_agreement(
             mae_threshold=mae_threshold,
             passed=False,
             details="Empty sample array",
+        )
+
+    if not np.all(np.isfinite(p)) or not np.all(np.isfinite(r)):
+        return MorphometryValidationResult(
+            parameter_name=param_name,
+            sample_size=n,
+            mean_absolute_error=float("nan"),
+            root_mean_square_error=float("nan"),
+            systematic_bias=float("nan"),
+            bland_altman_lower_limit_95=float("nan"),
+            bland_altman_upper_limit_95=float("nan"),
+            mae_threshold=mae_threshold,
+            passed=False,
+            details="Non-finite values (NaN or Inf) detected in morphometry arrays",
         )
 
     diffs = p - r
@@ -161,14 +190,34 @@ def compute_classification_agreement(
     pred_reachable: np.ndarray,
     ref_reachable: np.ndarray,
     kappa_threshold: float = 0.82,
+    sensitivity_threshold: float = 0.90,
+    specificity_threshold: float = 0.90,
 ) -> ReachabilityClassificationMetrics:
     """
     Computes Cohen's Kappa with 95% confidence interval, sensitivity, specificity, PPV, NPV.
+    Thresholds aligned with ACU-M15.0.2-M15.1 specification: Kappa ≥ 0.82, Sens ≥ 0.90, Spec ≥ 0.90.
     """
     p = np.asarray(pred_reachable, dtype=bool)
     r = np.asarray(ref_reachable, dtype=bool)
-    n = len(p)
+    if p.shape != r.shape or len(p) == 0:
+        return ReachabilityClassificationMetrics(
+            total_evaluations=len(p),
+            true_positives=0,
+            false_positives=0,
+            true_negatives=0,
+            false_negatives=0,
+            sensitivity=0.0,
+            specificity=0.0,
+            positive_predictive_value=0.0,
+            negative_predictive_value=0.0,
+            accuracy=0.0,
+            cohens_kappa=0.0,
+            kappa_ci_lower_95=0.0,
+            kappa_ci_upper_95=0.0,
+            passed=False,
+        )
 
+    n = len(p)
     tp = int(np.sum(p & r))
     tn = int(np.sum((~p) & (~r)))
     fp = int(np.sum(p & (~r)))
@@ -197,7 +246,7 @@ def compute_classification_agreement(
         kappa_lower = kappa
         kappa_upper = kappa
 
-    passed = (kappa >= kappa_threshold) and (sensitivity >= 0.88) and (specificity >= 0.85)
+    passed = (kappa >= kappa_threshold) and (sensitivity >= sensitivity_threshold) and (specificity >= specificity_threshold)
 
     return ReachabilityClassificationMetrics(
         total_evaluations=n,
@@ -225,8 +274,21 @@ def compute_icc_2_1(
     """
     Computes two-way random effects single rater ICC(2,1) for absolute agreement.
     ratings_matrix: [n_cases, k_raters]
+    Fails closed on degenerate zero-variance matrices instead of falsely reporting 1.0.
     """
-    n, k = ratings_matrix.shape
+    mat = np.asarray(ratings_matrix, dtype=float)
+    if mat.ndim != 2:
+        return InterRaterReliabilityResult(
+            parameter_name=param_name,
+            num_cases=0,
+            num_raters=0,
+            icc_value=None,
+            icc_threshold=icc_threshold,
+            agreement_interpretation="INVALID_DIMENSIONS: Ratings matrix must be 2D [n_cases, k_raters]",
+            passed=False,
+        )
+
+    n, k = mat.shape
     if n < 3 or k < 2:
         return InterRaterReliabilityResult(
             parameter_name=param_name,
@@ -238,12 +300,23 @@ def compute_icc_2_1(
             passed=False,
         )
 
-    # Mean squares via two-way ANOVA
-    mean_case = np.mean(ratings_matrix, axis=1)
-    mean_rater = np.mean(ratings_matrix, axis=0)
-    grand_mean = np.mean(ratings_matrix)
+    if not np.all(np.isfinite(mat)):
+        return InterRaterReliabilityResult(
+            parameter_name=param_name,
+            num_cases=n,
+            num_raters=k,
+            icc_value=None,
+            icc_threshold=icc_threshold,
+            agreement_interpretation="NON_FINITE_VALUES: Ratings matrix contains NaN or Inf",
+            passed=False,
+        )
 
-    ss_total = np.sum((ratings_matrix - grand_mean)**2)
+    # Mean squares via two-way ANOVA
+    mean_case = np.mean(mat, axis=1)
+    mean_rater = np.mean(mat, axis=0)
+    grand_mean = np.mean(mat)
+
+    ss_total = np.sum((mat - grand_mean)**2)
     ss_rows = k * np.sum((mean_case - grand_mean)**2)      # Cases
     ss_cols = n * np.sum((mean_rater - grand_mean)**2)     # Raters
     ss_error = max(0.0, ss_total - ss_rows - ss_cols)
@@ -257,10 +330,18 @@ def compute_icc_2_1(
     ms_error = ss_error / max(1, df_error)
 
     denom = ms_rows + (k - 1) * ms_error + (k * (ms_cols - ms_error) / n)
-    if denom > 1e-6:
-        icc = (ms_rows - ms_error) / denom
-    else:
-        icc = 1.0
+    if denom <= 1e-6:
+        return InterRaterReliabilityResult(
+            parameter_name=param_name,
+            num_cases=n,
+            num_raters=k,
+            icc_value=None,
+            icc_threshold=icc_threshold,
+            agreement_interpretation="DEGENERATE_ZERO_VARIANCE_NOT_ESTIMABLE: Total variance effectively zero across all cases and raters",
+            passed=False,
+        )
+
+    icc = (ms_rows - ms_error) / denom
     icc = min(1.0, max(-1.0, float(icc)))
 
     if icc >= 0.90:
@@ -325,6 +406,96 @@ def evaluate_m15_validation_gate(
         try:
             with open(m_path, "r", encoding="utf-8") as f:
                 m_data = json.load(f)
+
+            # Check for example-only or non-production flags
+            if m_data.get("example_only", False) or m_data.get("is_example", False):
+                return M15ValidationGateReport(
+                    gate_identifier="ACU-M15-V-GATE-2026",
+                    status="NOT_EVALUABLE",
+                    overall_gate_passed=False,
+                    validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                    summary_findings="Evaluation blocked: manifest is marked as example/template only (example_only=True). Production evidence gate requires verified empirical data.",
+                )
+
+            # Nested cases schema support
+            if "cases" in m_data and isinstance(m_data["cases"], list):
+                extracted_ipa_pred: List[float] = []
+                extracted_ipa_ref: List[float] = []
+                extracted_iw_pred: List[float] = []
+                extracted_iw_ref: List[float] = []
+                extracted_class_pred: List[bool] = []
+                extracted_class_ref: List[bool] = []
+                extracted_ratings: List[List[float]] = []
+
+                empty_sha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+                for case in m_data["cases"]:
+                    cid_str = case.get("case_id", "UNKNOWN")
+
+                    # Check for placeholder hashes and verify on-disk artifacts
+                    hash_keys = ["ct_volume_sha256", "staple_consensus_sha256", "vmtk_centerline_sha256"]
+                    for h_key in hash_keys:
+                        if h_key in case:
+                            h_val = str(case[h_key]).strip()
+                            if h_val in ("...", "placeholder", empty_sha256):
+                                return M15ValidationGateReport(
+                                    gate_identifier="ACU-M15-V-GATE-2026",
+                                    status="NOT_EVALUABLE",
+                                    overall_gate_passed=False,
+                                    validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                                    summary_findings=f"Evaluation blocked: case '{cid_str}' contains placeholder/empty SHA-256 digest for '{h_key}'.",
+                                )
+                            # Check file on disk if corresponding file path is specified
+                            f_key = h_key.replace("_sha256", "_nifti") if "nifti" in h_key else h_key.replace("_sha256", "_mask") if "mask" in h_key else h_key.replace("_sha256", "_vtp")
+                            if f_key in case:
+                                p_disk = Path(case[f_key])
+                                if not p_disk.is_absolute():
+                                    p_disk = (m_path.parent / p_disk).resolve()
+                                if p_disk.is_file():
+                                    import hashlib
+                                    with open(p_disk, "rb") as bf:
+                                        computed_h = hashlib.sha256(bf.read()).hexdigest()
+                                    if computed_h.lower() != h_val.lower():
+                                        return M15ValidationGateReport(
+                                            gate_identifier="ACU-M15-V-GATE-2026",
+                                            status="NOT_EVALUABLE",
+                                            overall_gate_passed=False,
+                                            validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                                            summary_findings=f"Evaluation blocked: SHA-256 mismatch for artifact '{p_disk.name}' in case '{cid_str}'. Manifest: {h_val}, Computed: {computed_h}.",
+                                        )
+
+                    # Extract morphometry ground truth and predictions
+                    gt = case.get("morphometry_ground_truth", {})
+                    preds = case.get("morphometry_predictions", {})
+                    for calyx_id, calyx_ref in gt.items():
+                        extracted_ipa_ref.append(float(calyx_ref["ipa_deg"]))
+                        extracted_iw_ref.append(float(calyx_ref["iw_min_mm"]))
+                        extracted_class_ref.append(bool(calyx_ref.get("reachable", False)))
+
+                        if calyx_id in preds:
+                            extracted_ipa_pred.append(float(preds[calyx_id]["ipa_deg"]))
+                            extracted_iw_pred.append(float(preds[calyx_id]["iw_min_mm"]))
+                            extracted_class_pred.append(bool(preds[calyx_id].get("reachable", False)))
+
+                    if "rater_ipa_measurements" in case and isinstance(case["rater_ipa_measurements"], list):
+                        extracted_ratings.append([float(x) for x in case["rater_ipa_measurements"]])
+
+                if ipa_ref is None and extracted_ipa_ref:
+                    ipa_ref = np.array(extracted_ipa_ref, dtype=float)
+                if ipa_pred is None and extracted_ipa_pred:
+                    ipa_pred = np.array(extracted_ipa_pred, dtype=float)
+                if iw_ref is None and extracted_iw_ref:
+                    iw_ref = np.array(extracted_iw_ref, dtype=float)
+                if iw_pred is None and extracted_iw_pred:
+                    iw_pred = np.array(extracted_iw_pred, dtype=float)
+                if class_ref is None and extracted_class_ref:
+                    class_ref = np.array(extracted_class_ref, dtype=bool)
+                if class_pred is None and extracted_class_pred:
+                    class_pred = np.array(extracted_class_pred, dtype=bool)
+                if multi_expert_ratings is None and extracted_ratings:
+                    multi_expert_ratings = np.array(extracted_ratings, dtype=float)
+
+            # Flat arrays support (existing or explicit top-level)
             if ipa_pred is None and "ipa_pred" in m_data:
                 ipa_pred = np.asarray(m_data["ipa_pred"], dtype=float)
             if ipa_ref is None and "ipa_ref" in m_data:
@@ -374,8 +545,10 @@ def evaluate_m15_validation_gate(
     ipa_result = compute_continuous_agreement(ipa_pred, ipa_ref, "Infundibulopelvic Angle (IPA)", mae_threshold=5.0, unit_str="deg")
     iw_result = compute_continuous_agreement(iw_pred, iw_ref, "Infundibular Width (IW)", mae_threshold=0.6, unit_str="mm")
 
-    # 4. Categorical Reachability Classification
-    class_result = compute_classification_agreement(class_pred, class_ref, kappa_threshold=0.82)
+    # 4. Categorical Reachability Classification (aligned with ACU-M15.0.2-M15.1 thresholds: Kappa >= 0.82, Sens >= 0.90, Spec >= 0.90)
+    class_result = compute_classification_agreement(
+        class_pred, class_ref, kappa_threshold=0.82, sensitivity_threshold=0.90, specificity_threshold=0.90
+    )
 
     # 5. Inter-Rater Reliability
     icc_result = compute_icc_2_1(multi_expert_ratings, param_name="IPA Expert Consistency", icc_threshold=0.80)
@@ -394,11 +567,25 @@ def evaluate_m15_validation_gate(
         for cid, calyx in phantom.calyces.items():
             total_calyces += 1
             phantom_calyces_count += 1
-            is_truth_acc = calyx.is_flexible_accessible_unloaded
 
-            # Empirical measurement must be present for this calyx; zero synthetic fallback
             if cid in p_meas:
-                is_pred_acc = bool(p_meas[cid].get("is_accessible", False))
+                calyx_meas = p_meas[cid]
+                # Tool loading evaluation
+                tool_cfg = str(calyx_meas.get("tool", calyx_meas.get("tool_configuration", "UNLOADED"))).upper()
+                if "200" in tool_cfg:
+                    is_truth_acc = calyx.is_flexible_accessible_loaded_200um
+                elif "365" in tool_cfg or "BASKET" in tool_cfg:
+                    is_truth_acc = calyx.is_flexible_accessible_loaded_365um
+                else:
+                    is_truth_acc = calyx.is_flexible_accessible_unloaded
+
+                is_pred_acc = bool(calyx_meas.get("is_accessible", False))
+                tip_err = calyx_meas.get("tip_error_mm")
+
+                # If tip error is reported, verify it does not exceed 1.0 mm tolerance for accessible target
+                if is_truth_acc and tip_err is not None and float(tip_err) > 1.0:
+                    is_pred_acc = False  # Critical localization error exceeds tolerance
+
                 if is_truth_acc == is_pred_acc:
                     concordant += 1
                     phantom_concordant_count += 1

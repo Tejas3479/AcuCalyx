@@ -1,19 +1,19 @@
 <div align="center">
 
 # AcuCalyx™ (KidneyStone 3D)
-### Autonomous Preoperative CT Surgical Planning, Computational Geometry & Virtual Fluoroscopy Digital Twin for Percutaneous Nephrolithotomy (PCNL)
+### PCNL Access Planning Workbench: Computational Geometry, Anatomical Hazard Analysis & Multi-Tract Comparison for Percutaneous Nephrolithotomy (PCNL)
 
 [![Python 3.13](https://img.shields.io/badge/Python-3.13%2B-blue.svg?logo=python&logoColor=white)](https://python.org)
-[![Tests Passing](https://img.shields.io/badge/Tests-199%2F199%20Passing-brightgreen.svg?logo=pytest&logoColor=white)](./tests)
-[![FDA Regulatory](https://img.shields.io/badge/FDA%20Pathway-510(k)%20Class%20II%20(LLZ)-informational.svg)](./docs/regulatory)
-[![IEC 62304](https://img.shields.io/badge/IEC%2062304-Class%20B%20Compliant-blueviolet.svg)](./docs/regulatory/04_IEC_62304_SOFTWARE_LIFECYCLE_AND_SOUP.md)
+[![Tests Passing](https://img.shields.io/badge/Tests-241%2F241%20Passing-brightgreen.svg?logo=pytest&logoColor=white)](./tests)
+[![Target Regulatory Architecture](https://img.shields.io/badge/Target%20Pathway-FDA%20Class%20II%20(LLZ)%20CDS-informational.svg)](./docs/regulatory)
+[![Target Software Standard](https://img.shields.io/badge/Target%20Standard-IEC%2062304%20Class%20B%20DHF-blueviolet.svg)](./docs/regulatory/04_IEC_62304_SOFTWARE_LIFECYCLE_AND_SOUP.md)
 [![HIPAA De-ID](https://img.shields.io/badge/HIPAA%20%2F%20PS%203.15-Cryptographic%20PHI%20Guard-success.svg)](./src/acucalyx/cybersecurity/phi_guard.py)
 [![WebGL 3D](https://img.shields.io/badge/Viewer-Three.js%20WebGL%20PBR-orange.svg?logo=three.js&logoColor=white)](./app/frontend)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI%20REST-009688.svg?logo=fastapi&logoColor=white)](./app/api)
 
 ---
 
-**A zero-hardware, cloud-native surgical digital twin that translates routine Non-Contrast CT (NCCT) scans into single-puncture percutaneous trajectories, patient-specific 3D anatomical models, and sterile C-Arm fluoroscopy gantry angles for existing operating room X-ray machines.**
+**A clinician-reviewed PCNL access planning workbench that translates routine thin-slice CT scans into side-by-side candidate trajectories, patient-specific 3D anatomical models, and calibrated C-Arm fluoroscopy gantry angles for existing operating room X-ray machines.**
 
 [Key Innovations](#-key-architectural-innovations) •
 [Interactive Cockpit](#-interactive-3d-rehearsal-cockpit) •
@@ -35,14 +35,14 @@ Because surgeons are forced to mentally reconstruct complex 3D renal anatomy fro
 * **15% to 30% of complex cases require multiple puncture attempts**, escalating nephron loss, major hemorrhages requiring angioembolization (1–3%), and severe septic complications.
 * **Retrorenal colon perforation occurs in 2% to 5% of cases**, a potentially fatal complication requiring emergent laparotomy.
 
-**AcuCalyx™ eliminates procedural guesswork without requiring expensive surgical robots or tracking markers.** By running rigorous computational geometry on standard thin-slice CT scans, AcuCalyx:
+**AcuCalyx™ supports clinicians during complex preoperative planning without requiring expensive surgical robots or tracking markers.** By running rigorous computational geometry on standard thin-slice CT scans, AcuCalyx:
 1. Calculates true 3D stone volumetry and radiodensity profiles.
 2. Evaluates continuous 3D clearance envelopes to surrounding viscera (colon, pleura, intercostal neurovascular bundles).
-3. Optimizes access trajectories via a **Three-Tier Fail-Safe Pareto Optimizer**.
-4. Simulates **C-Arm Fluoroscopy Gantry Angles (LAO/RAO and Cranial/Caudal)** to reproduce the exact Bull's-Eye (co-axial) and 90° Progression views on standard surgical C-arms.
+3. Evaluates access trajectories via a **Three-Tier Pareto Optimizer & Candidate Comparison Matrix**.
+4. Simulates **C-Arm Fluoroscopy Gantry Angles (LAO/RAO and Cranial/Caudal)** to reproduce Bull's-Eye (co-axial) and 90° Progression views on standard surgical C-arms.
 
 ```
-                              CURRENT CLINICAL WORKFLOW (FLAWED)
+                              CURRENT CLINICAL WORKFLOW (CHALLENGING)
 ┌────────────────────────┐      ┌─────────────────────────┐      ┌──────────────────────────┐
 │ Patient gets Non-      │ ───► │ Surgeon scrolls through │ ───► │ Surgeon mentally guesses │
 │ Contrast CT (300 slices│      │ 300 flat 2D slices      │      │ 3D trajectory in the OR  │
@@ -51,21 +51,21 @@ Because surgeons are forced to mentally reconstruct complex 3D renal anatomy fro
                                             ┌──────────────────────────────────┴──────────────────────────────────┐
                                             ▼                                                                     ▼
                                ┌─────────────────────────┐                                           ┌─────────────────────────┐
-                               │ Multi-tract punctures   │                                           │ Fatal hazard puncture   │
+                               │ Multi-tract punctures   │                                           │ Visceral hazard injury  │
                                │ (15–30% complex cases)  │                                           │ (Retrorenal colon 2–5%) │
                                └─────────────────────────┘                                           └─────────────────────────┘
 
-                              ACUCALYX™ WORKFLOW (ZERO-HARDWARE)
+                              ACUCALYX™ WORKBENCH WORKFLOW
 ┌────────────────────────┐      ┌─────────────────────────┐      ┌──────────────────────────┐      ┌──────────────────────────┐
-│ Non-Contrast CT DICOM  │ ───► │ AI 3D Mesh Engine       │ ───► │ 3-Tier Pareto Optimizer  │ ───► │ 1-Page Sterile Blueprint │
-│ uploaded (<= 1.25mm)   │      │ (Surface Extraction)    │      │ & Distance Fields (SDF)  │      │ & C-Arm Gantry Angles    │
+│ Routine Thin-Slice CT  │ ───► │ Verified 3D Anatomy     │ ───► │ Side-by-Side Candidate   │ ───► │ 1-Page Surgical          │
+│ Ingested (<= 1.25mm)   │      │ & Distance Fields (SDF) │      │ Tract Comparison Matrix  │      │ Rehearsal Summary Card   │
 └────────────────────────┘      └─────────────────────────┘      └──────────────────────────┘      └──────────────────────────┘
                                                                                │
                                                                                ▼
                                                                  ┌──────────────────────────┐
-                                                                 │ Single-tract puncture    │
-                                                                 │ Zero colon perforations  │
-                                                                 │ CPT 76376/76377 Billable │
+                                                                 │ Clinician-Reviewed Plan  │
+                                                                 │ Transparent Hazard Margin│
+                                                                 │ Explicit Uncertainty     │
                                                                  └──────────────────────────┘
 ```
 
@@ -347,15 +347,14 @@ AcuCalyx/
 
 ---
 
-## 🏥 Regulatory Classification & Commercial Coding
+## 🏥 Target Regulatory Framework & Exploratory Health Economics
 
-* **FDA Classification:** Class II Medical Device (21 CFR 892.2050 - *Medical image management and processing system*).
-* **FDA Product Code:** **LLZ** (Radiological Image Processing System).
-* **Primary FDA Predicates:** Ceevra (K173426), Avatar Medical (K232490), Philips syngo DynaCT (K151800).
-* **Applicable US Reimbursement Coding:**
-  * **CPT 76376:** 3D radiologic evaluation requiring post-processing on existing workstation (\$80–\$110).
-  * **CPT 76377:** 3D radiologic evaluation requiring advanced independent workstation reconstruction (\$120–\$160).
-* **Institutional Value:** By reducing puncture attempts from 4.2 to 1.1, AcuCalyx saves an average of **28 minutes of operating room and fluoroscopy time per case** (~**\$1,800 to \$2,400 in direct institutional cost savings per surgery**).
+* **Intended Regulatory Pathway (Pre-Submission Modeling):** FDA 510(k) Class II Medical Device (21 CFR 892.2050 - *Medical image management and processing system*, Product Code **LLZ**).
+* **Clinical Decision Support Alignment:** Designed in alignment with FDA CDS Guidance (Sept 2022) to enable independent clinician review of input imaging, anatomical segmentation contours, and candidate clearance metrics.
+* **Reference Predicate Landscape:** Ceevra (K173426), Avatar Medical (K232490), Philips syngo DynaCT (K151800).
+* **Exploratory Reimbursement Alignment (Research Modeling):**
+  * **CPT 76376 / 76377:** Investigated as potential procedural coding classifications for advanced 3D radiologic evaluation following regulatory clearance and clinical evidence development. No commercial billing clearance is currently claimed.
+* **Institutional Economics Hypothesis:** Preclinical models hypothesize workflow efficiencies from structured 3D candidate comparison, subject to prospective clinical verification.
 
 ---
 
@@ -366,14 +365,14 @@ Please review our [**Contributing Guidelines (CONTRIBUTING.md)**](CONTRIBUTING.m
 * **Zero-PHI Compliance:** Strict prohibition of raw patient data and enforcement of DICOM PS 3.15 de-identification
 * **Collaboration Workflows:** Branch & PR workflow for teammates and Fork & PR workflow for community contributors
 * **Commit Standards:** Conventional Commits (`feat`, `fix`, `docs`, `test`, `refactor`)
-* **Quality Gates:** 100% pass requirement on the 240-test suite (`pytest tests/unit tests/golden tests/integration tests/property`)
+* **Quality Gates:** 100% pass requirement on the complete test suite (`pytest tests/unit tests/golden tests/integration tests/property`)
 
 ---
 
-## ⚖️ Investigational Device Disclaimer
+## ⚖️ Investigational & Research Software Disclaimer
 
-> **CAUTION — Investigational Device.**  
-> AcuCalyx™ is an investigational software platform limited by federal and international law to investigational use (21 CFR 812.5). The system is designed to provide clinical decision support and pre-procedural trajectory simulation for board-certified urologists. It does not automate puncture execution or replace surgeon judgment. All trajectories must be reviewed, confirmed, and verified against native patient DICOM imaging prior to sterile puncture.
+> **CAUTION — Investigational & Nonclinical Research Software.**  
+> AcuCalyx™ is an investigational software prototype developed for research and pre-procedural planning evaluation only. It is not cleared for diagnostic or therapeutic clinical use. The system does not provide autonomous surgical guidance, automate puncture execution, or guarantee clinical outcomes (such as complication avoidance or complete stone clearance). All trajectories, hazard clearances, and anatomical contours are computational decision support and must be independently evaluated by qualified medical professionals against native patient imaging.
 
 ---
 
