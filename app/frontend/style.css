@@ -772,3 +772,78 @@ select.theme-select:focus {
   flex-shrink: 0;
 }
 
+/* Candidate Access Tract Comparison Matrix Table */
+.comparison-matrix-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 8px;
+}
+.comparison-matrix-table th,
+.comparison-matrix-table td {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  text-align: left;
+  vertical-align: top;
+}
+.comparison-matrix-table th {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-primary);
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.5px;
+}
+.comparison-matrix-table tr:hover {
+  background-color: rgba(2, 132, 199, 0.04);
+}
+.comparison-matrix-table .matrix-row-header {
+  font-weight: 600;
+  color: var(--text-secondary);
+  background-color: var(--bg-surface-elevated);
+  white-space: nowrap;
+}
+.comparison-matrix-table .matrix-candidate-col {
+  min-width: 220px;
+}
+.comparison-matrix-table .matrix-active-col {
+  background-color: rgba(0, 229, 163, 0.05);
+  border-left: 2px solid var(--accent-teal);
+  border-right: 2px solid var(--accent-teal);
+}
+
+/* 1-Page Summary Card Print Rules */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  #modal-summary-card,
+  #modal-summary-card * {
+    visibility: visible;
+  }
+  #modal-summary-card {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: #ffffff !important;
+    display: block !important;
+    z-index: 99999;
+  }
+  #modal-summary-card .modal-header,
+  #modal-summary-card .modal-footer {
+    display: none !important;
+  }
+  #summary-card-printable-area {
+    padding: 0 !important;
+    margin: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+  #summary-card-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+    color: #000000 !important;
+  }
+}
+

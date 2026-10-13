@@ -336,3 +336,32 @@ def test_patient_case_fails_closed_without_neural_weights(tmp_path):
     assert st_res.json()["state"] == "REJECTED"
 
 
+def test_frontend_workbench_and_summary_card_assets():
+    """
+    Verifies that frontend static assets serve the Candidate Comparison Matrix
+    and 1-Page Preoperative Planning Summary Card interface elements.
+    """
+    # 1. Verify index.html loads with UI components
+    res_html = client.get("/")
+    assert res_html.status_code == 200
+    html_text = res_html.text
+    assert "btn-open-comparison-matrix" in html_text
+    assert "btn-open-summary-card" in html_text
+    assert "modal-comparison-matrix" in html_text
+    assert "modal-summary-card" in html_text
+    assert "comparison-matrix-table" in html_text
+    assert "summary-card-inner" in html_text
+    assert "window.openComparisonMatrix" in html_text
+    assert "window.openSummaryCard" in html_text
+    assert "window.printSummaryCard" in html_text
+
+    # 2. Verify style.css loads with print rules and table styles
+    res_css = client.get("/style.css")
+    assert res_css.status_code == 200
+    css_text = res_css.text
+    assert ".comparison-matrix-table" in css_text
+    assert "@media print" in css_text
+    assert "#modal-summary-card" in css_text
+
+
+

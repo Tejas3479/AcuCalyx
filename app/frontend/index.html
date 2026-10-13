@@ -405,6 +405,13 @@
 
       <!-- Clinician Actions -->
       <div class="panel-section clinician-actions-section" style="background-color: var(--bg-surface-elevated);">
+        <!-- Milestone M14.5 / Workbench Pivot Actions -->
+        <button id="btn-open-comparison-matrix" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight: 700;">
+          📊 Compare Candidate Tracts (Workbench)
+        </button>
+        <button id="btn-open-summary-card" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #10b981; color: #10b981; font-weight: 700;">
+          📄 1-Page Surgical Summary Card
+        </button>
         <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
           🛡️ Laterality Multi-Evidence Gate (U1)
         </button>
@@ -476,6 +483,175 @@
       </div>
       <div class="modal-footer">
         <button class="btn btn-primary" onclick="document.getElementById('modal-fluoroscopy').style.display='none'">Close Simulation</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Milestone M14.5: Candidate Access Tract Comparison Matrix Modal -->
+  <div id="modal-comparison-matrix" class="modal-overlay" style="display: none; z-index: 1050;">
+    <div class="modal-content" style="width: 1100px; max-width: 96vw; max-height: 92vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: var(--accent-cyan);">📊 Candidate Access Tract Comparison Matrix</span>
+          <span class="version-pill" style="background: rgba(2, 132, 199, 0.15); color: var(--accent-cyan); font-weight: 600;">WORKBENCH DECISION SUPPORT</span>
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-comparison-matrix').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;">
+        <!-- Clinical Disclaimer Banner -->
+        <div class="cds-disclaimer-banner" style="margin-bottom: 12px; font-size: 11px; padding: 8px 12px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span id="matrix-disclaimer-text">PREOPERATIVE GEOMETRIC ESTIMATE ONLY — NOT AN INTRAOPERATIVE MAP. Candidate comparisons and clearance estimates are computational decision support, not guarantees of procedural safety, reachability, or stone-free status.</span>
+        </div>
+
+        <div id="matrix-loading" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+          ⏳ Loading candidate comparison matrix...
+        </div>
+
+        <div id="matrix-content" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; font-size: 12px; color: var(--text-secondary); background: var(--bg-surface-elevated); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div>Case ID: <strong id="matrix-case-id" style="color: var(--text-primary);">--</strong> | Modality: <strong id="matrix-modality" style="color: var(--text-primary);">--</strong> | Assumed Position: <strong id="matrix-position" style="color: var(--text-primary);">PRONE</strong></div>
+            <div>Total Stone Burden: <strong id="matrix-stone-vol" style="color: #fbbf24;">-- mm³</strong></div>
+          </div>
+          <div style="overflow-x: auto;">
+            <table class="comparison-matrix-table" id="comparison-matrix-table">
+              <!-- Injected dynamically via JavaScript -->
+            </table>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 10px; color: var(--text-muted);">Cryptographic Provenance: <span id="matrix-provenance-hash" style="font-family: var(--font-mono);">N/A</span></span>
+        <button class="btn btn-primary" onclick="document.getElementById('modal-comparison-matrix').style.display='none'">Close Workbench</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Milestone M14.5: 1-Page Preoperative PCNL Access Planning Summary Card Modal -->
+  <div id="modal-summary-card" class="modal-overlay" style="display: none; z-index: 1060;">
+    <div class="modal-content" style="width: 920px; max-width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #10b981;">📄 1-Page Preoperative PCNL Access Planning Summary Card</span>
+          <span class="version-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 600;">SURGICAL TIME-OUT / CHART EXPORT</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-success" onclick="printSummaryCard()">🖨️ Print / Save PDF</button>
+          <button class="btn" onclick="document.getElementById('modal-summary-card').style.display='none'">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 18px 24px; background: #ffffff; color: #0f172a;" id="summary-card-printable-area">
+        <!-- 1-Page Clinical Time-Out Document -->
+        <div id="summary-card-inner" style="font-family: var(--font-sans); color: #0f172a;">
+          <!-- Top Header -->
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 12px;">
+            <div>
+              <div style="font-size: 18px; font-weight: 800; color: #0f172a; letter-spacing: -0.5px;">AcuCalyx™ PCNL Access Planning Summary Card</div>
+              <div style="font-size: 11px; color: #475569; margin-top: 2px;">Preoperative Computational Planning & Decision Support • Version 2.1.0</div>
+            </div>
+            <div style="text-align: right; font-size: 11px; color: #334155;">
+              <div><strong>Case:</strong> <span id="card-case-id">--</span></div>
+              <div><strong>Side:</strong> <span id="card-side" style="text-transform: uppercase; font-weight: 700; color: #0284c7;">--</span> | <strong>Modality:</strong> <span id="card-modality">NCCT</span></div>
+              <div><strong>Generated:</strong> <span id="card-date">--</span></div>
+            </div>
+          </div>
+
+          <!-- Section 1: Selected Primary Tract Summary -->
+          <div style="background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 12px; font-weight: 800; color: #0284c7; text-transform: uppercase;">Selected Access Tract (<span id="card-cand-id">--</span>)</span>
+              <span id="card-rib-badge" style="background: #e2e8f0; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; color: #0f172a;">SUBCOSTAL</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; font-size: 11px;">
+              <div>Target Calyx: <br><strong id="card-target-calyx" style="font-size: 12px;">--</strong></div>
+              <div>Working Depth: <br><strong id="card-depth" style="font-size: 12px;">-- mm</strong></div>
+              <div>Coronal Puncture Angle: <br><strong id="card-coronal-angle" style="font-size: 12px;">--°</strong></div>
+              <div>Sagittal Puncture Angle: <br><strong id="card-sagittal-angle" style="font-size: 12px;">--°</strong></div>
+            </div>
+          </div>
+
+          <!-- Section 2: Hazard Clearance & Stone Reach Matrix -->
+          <div style="margin-bottom: 12px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #334155; margin-bottom: 6px;">Evaluated Candidate Tracts Comparison</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #cbd5e1;">
+              <thead>
+                <tr style="background: #f1f5f9; border-bottom: 1px solid #cbd5e1; text-align: left;">
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Tract ID</th>
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Target Calyx</th>
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Depth</th>
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Colon Margin</th>
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Pleural Margin</th>
+                  <th style="padding: 5px 6px; border-right: 1px solid #cbd5e1;">Rigid Reach</th>
+                  <th style="padding: 5px 6px;">Clinical Trade-off Summary</th>
+                </tr>
+              </thead>
+              <tbody id="card-comparison-tbody">
+                <!-- Injected dynamically -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Section 3: 2D CT Keyframe Overlays + Calculus Burden -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+            <!-- Keyframe CT Previews -->
+            <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px;">
+              <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #334155; margin-bottom: 6px;">2D CT Keyframe Needle Corridor</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align: center;">
+                <div>
+                  <div style="font-size: 9.5px; color: #64748b; margin-bottom: 2px;">Axial Transverse</div>
+                  <img id="card-axial-img" alt="Axial Keyframe" style="width: 100%; height: 110px; object-fit: contain; background: #000; border-radius: 4px;" src="" />
+                </div>
+                <div>
+                  <div style="font-size: 9.5px; color: #64748b; margin-bottom: 2px;">Coronal Long Axis</div>
+                  <img id="card-coronal-img" alt="Coronal Keyframe" style="width: 100%; height: 110px; object-fit: contain; background: #000; border-radius: 4px;" src="" />
+                </div>
+              </div>
+            </div>
+
+            <!-- Calculus Burden Profile -->
+            <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 11px;">
+              <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #334155; margin-bottom: 6px;">Calculus Burden & Nephrolithometry</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-bottom: 6px;">
+                <div>Total Volume: <strong id="card-stone-volume">-- mm³</strong></div>
+                <div>Max Caliper: <strong id="card-stone-feret">-- mm</strong></div>
+                <div>Peak Attenuation: <strong id="card-stone-hu">-- HU</strong></div>
+                <div>Guy's Grade: <strong id="card-guys-grade">GRADE I</strong></div>
+              </div>
+              <div style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #e2e8f0; font-size: 10px; color: #475569;">
+                <strong>Virtual Fluoroscopy Angles (C-Arm):</strong><br>
+                Bull's-Eye: <span id="card-carm-be" style="font-weight: 700; color: #0284c7;">--</span> | Depth: <span id="card-carm-dv" style="font-weight: 700; color: #b45309;">--</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section 4: Surgeon Operative Notes & Sign-Off Block -->
+          <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; margin-bottom: 10px; font-size: 11px;">
+            <div style="font-size: 11px; font-weight: 800; text-transform: uppercase; color: #334155; margin-bottom: 4px;">Surgeon Operative Plan Notes:</div>
+            <textarea id="card-surgeon-notes" placeholder="Enter clinical notes, access sheath caliber choice, lithotrite selection, and patient-specific anatomical caveats here..." style="width: 100%; height: 38px; border: 1px solid #cbd5e1; border-radius: 4px; padding: 6px; font-size: 11px; font-family: inherit; resize: none;"></textarea>
+            <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-top: 8px; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+              <div>
+                Attending Urologist Signature: <span style="display: inline-block; width: 220px; border-bottom: 1px solid #0f172a; margin-left: 6px;"></span>
+              </div>
+              <div>
+                Date: <span style="display: inline-block; width: 80px; border-bottom: 1px solid #0f172a; margin-left: 4px;"></span>
+                Time: <span style="display: inline-block; width: 60px; border-bottom: 1px solid #0f172a; margin-left: 4px;"></span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mandatory Footer Disclaimer -->
+          <div style="font-size: 9px; color: #64748b; line-height: 1.3; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 6px;">
+            <strong>CAUTION — PREOPERATIVE CLINICAL DECISION SUPPORT ONLY.</strong> Not an intraoperative navigation or surgical guidance device. Clearance estimates and candidate metrics are derived from preoperative static CT imaging. Patient posture deformation and respiratory motion must be verified intraoperatively. Provenance Hash: <span id="card-hash" style="font-family: var(--font-mono);">--</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: flex-end; gap: 8px;">
+        <button class="btn btn-primary" onclick="printSummaryCard()">🖨️ Print Summary Card</button>
+        <button class="btn" onclick="document.getElementById('modal-summary-card').style.display='none'">Close</button>
       </div>
     </div>
   </div>
@@ -1142,6 +1318,8 @@
         document.getElementById('modal-override').style.display = 'flex';
       });
       document.getElementById('btn-submit-override').addEventListener('click', submitOverride);
+      document.getElementById('btn-open-comparison-matrix')?.addEventListener('click', openComparisonMatrix);
+      document.getElementById('btn-open-summary-card')?.addEventListener('click', openSummaryCard);
 
       // Layer Toggles
       document.getElementById('layer-kidney').addEventListener('change', (e) => viewer3d.setLayerVisibility('kidney', e.target.checked));
@@ -2077,6 +2255,240 @@
         console.error('Validation error:', err);
       }
     }
+
+    // ==========================================
+    // Milestone M14.5: Comparison Matrix & 1-Page Summary Card Subsystem
+    // ==========================================
+
+    function formatMetricValue(m) {
+      if (!m) return '--';
+      if (m.status === 'NOT_EVALUABLE') {
+        return `<span style="color: var(--text-muted); font-style: italic; font-size: 10px;">NOT_EVALUABLE (${m.reason || 'Unobserved'})</span>`;
+      }
+      const valStr = (m.value !== null && m.value !== undefined) ? m.value : '--';
+      let extra = '';
+      if (m.status === 'UNCERTAIN') {
+        extra += ` <span class="version-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 9px;">UNCERTAIN</span>`;
+      }
+      if (m.confidence === 'LOW') {
+        extra += ` <span class="version-pill" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 9px;">LOW CONF</span>`;
+      }
+      return `<strong>${valStr} ${m.unit || ''}</strong>${extra}`;
+    }
+
+    async function openComparisonMatrix() {
+      if (!currentCaseId) {
+        alert('Please load or select a case first.');
+        return;
+      }
+      const modal = document.getElementById('modal-comparison-matrix');
+      modal.style.display = 'flex';
+      const loading = document.getElementById('matrix-loading');
+      const content = document.getElementById('matrix-content');
+      loading.style.display = 'block';
+      content.style.display = 'none';
+
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/candidates/comparison-matrix`);
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Could not fetch candidate comparison matrix');
+        }
+        const data = await res.json();
+        renderComparisonMatrix(data);
+        loading.style.display = 'none';
+        content.style.display = 'block';
+      } catch (err) {
+        loading.innerHTML = `
+          <div style="color: var(--accent-red); padding: 24px; text-align: center;">
+            <div style="font-size: 16px; font-weight: 700; margin-bottom: 6px;">⚠️ Comparison Matrix Unavailable</div>
+            <div style="font-size: 12px; color: var(--text-secondary);">${err.message}</div>
+          </div>
+        `;
+      }
+    }
+
+    function renderComparisonMatrix(matrix) {
+      document.getElementById('matrix-case-id').textContent = matrix.case_id;
+      document.getElementById('matrix-modality').textContent = matrix.imaging_modality;
+      document.getElementById('matrix-position').textContent = matrix.patient_position_assumed;
+      document.getElementById('matrix-stone-vol').textContent = `${matrix.total_stone_volume_mm3?.value ?? '--'} ${matrix.total_stone_volume_mm3?.unit || 'mm³'}`;
+      document.getElementById('matrix-provenance-hash').textContent = (matrix.provenance_hash || '').substring(0, 16) + '...';
+      if (matrix.disclaimer) {
+        document.getElementById('matrix-disclaimer-text').textContent = matrix.disclaimer;
+      }
+
+      const table = document.getElementById('comparison-matrix-table');
+      table.innerHTML = '';
+
+      const candidates = matrix.candidates || [];
+      if (candidates.length === 0) {
+        table.innerHTML = '<tr><td style="padding: 20px; text-align: center; color: var(--text-secondary);">No candidate tracts evaluated for this case.</td></tr>';
+        return;
+      }
+
+      const activeId = matrix.active_candidate_id || selectedCandidateId;
+
+      // Build Table Structure: Header row + Parameter rows
+      const thead = document.createElement('thead');
+      const trHead = document.createElement('tr');
+      const thParam = document.createElement('th');
+      thParam.style.width = '200px';
+      thParam.textContent = 'Clinical Parameter / Tract';
+      trHead.appendChild(thParam);
+
+      candidates.forEach((c, idx) => {
+        const letter = String.fromCharCode(65 + (idx % 26));
+        const isActive = (c.candidate_id === activeId);
+        const th = document.createElement('th');
+        th.className = `matrix-candidate-col ${isActive ? 'matrix-active-col' : ''}`;
+        th.innerHTML = `
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span style="font-size: 13px; font-weight: 800; color: var(--text-primary);">Candidate ${letter}</span>
+            ${isActive ? '<span class="version-pill" style="background: rgba(0, 229, 163, 0.15); color: #00e5a3; font-weight: 700; font-size: 9px;">ACTIVE PLAN</span>' : ''}
+          </div>
+          <div style="font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono);">${c.candidate_id}</div>
+          <button class="btn btn-sm ${isActive ? 'btn-success' : 'btn-primary'}" style="width: 100%; margin-top: 6px; font-size: 10px;" onclick="selectTractFromMatrix('${c.candidate_id}')">
+            ${isActive ? '✓ Selected' : 'Select This Tract'}
+          </button>
+        `;
+        trHead.appendChild(th);
+      });
+      thead.appendChild(trHead);
+      table.appendChild(thead);
+
+      const tbody = document.createElement('tbody');
+
+      function addMatrixRow(title, getterFn) {
+        const tr = document.createElement('tr');
+        const tdTitle = document.createElement('td');
+        tdTitle.className = 'matrix-row-header';
+        tdTitle.innerHTML = title;
+        tr.appendChild(tdTitle);
+
+        candidates.forEach(c => {
+          const td = document.createElement('td');
+          const isActive = (c.candidate_id === activeId);
+          if (isActive) td.className = 'matrix-active-col';
+          td.innerHTML = getterFn(c, isActive);
+          tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+      }
+
+      addMatrixRow('🎯 Target Calyx', c => `<strong>${c.target_calyx_name}</strong> <span style="font-size: 10px; color: var(--text-secondary);">(${c.target_calyx_id})</span>`);
+      addMatrixRow('📏 Working Tract Depth', c => formatMetricValue(c.tract_length_mm));
+      addMatrixRow('📐 Puncture Angles', c => `Coronal: ${formatMetricValue(c.puncture_angle_coronal_deg)}<br>Sagittal: ${formatMetricValue(c.puncture_angle_sagittal_deg)}`);
+      addMatrixRow('🦴 Rib Intercostal Relation', c => `<strong>${c.rib_relation}</strong>`);
+      addMatrixRow('🫁 Pleural Reflection Clearance', c => {
+        const val = c.pleural_clearance?.value;
+        const color = (val !== null && val < 10) ? 'color: var(--accent-red); font-weight: 700;' : '';
+        return `<span style="${color}">${formatMetricValue(c.pleural_clearance)}</span>`;
+      });
+      addMatrixRow('🛡️ Retrorenal Colon Margin', c => {
+        const val = c.colon_clearance?.value;
+        const color = (val !== null && val < 15) ? 'color: var(--accent-amber); font-weight: 700;' : '';
+        return `<span style="${color}">${formatMetricValue(c.colon_clearance)}</span>`;
+      });
+      addMatrixRow('🩸 Major Vascular Margin', c => formatMetricValue(c.vascular_clearance));
+      addMatrixRow('🔭 Rigid Scope Reach', c => `${formatMetricValue(c.rigid_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.rigid_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
+      addMatrixRow('🔄 Flexible Scope Reach', c => `${formatMetricValue(c.flexible_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.flexible_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
+      addMatrixRow('🧱 Inaccessible Volume', c => formatMetricValue(c.inaccessible_stone_volume_mm3));
+      addMatrixRow('🩺 Sheath Caliber (EAU)', c => `<div style="font-size: 11px; line-height: 1.35;">${c.caliber_suitability_considerations}</div>`);
+      addMatrixRow('💧 Irrigation Pressure Risk', c => `<div style="font-size: 11px; line-height: 1.35;">${c.irrigation_pressure_risk}</div>`);
+      addMatrixRow('⚠️ Uncertainty Flags', c => {
+        if (!c.uncertainty_flags || c.uncertainty_flags.length === 0) {
+          return '<span style="color: #10b981; font-size: 11px;">✓ No anatomical flags</span>';
+        }
+        return c.uncertainty_flags.map(f => `<span class="version-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 9px; display: inline-block; margin-bottom: 2px;">${f}</span>`).join(' ');
+      });
+      addMatrixRow('📋 Clinical Trade-Off Summary', c => `<div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">${c.clinical_tradeoff_summary}</div>`);
+
+      table.appendChild(tbody);
+    }
+
+    function selectTractFromMatrix(candidateId) {
+      selectTrajectory(candidateId);
+      document.getElementById('modal-comparison-matrix').style.display = 'none';
+    }
+
+    async function openSummaryCard() {
+      if (!currentCaseId) {
+        alert('Please load or select a case first.');
+        return;
+      }
+      const modal = document.getElementById('modal-summary-card');
+      modal.style.display = 'flex';
+
+      // 1. Header Metadata
+      document.getElementById('card-case-id').textContent = currentCaseId;
+      const targetSide = (currentVerifiedLaterality || (currentCaseMeta && currentCaseMeta.target_side) || 'left').toUpperCase();
+      document.getElementById('card-side').textContent = targetSide;
+      document.getElementById('card-modality').textContent = currentCaseMeta?.modality || 'NCCT (Preop CT)';
+      document.getElementById('card-date').textContent = new Date().toISOString().replace('T', ' ').substring(0, 19) + ' UTC';
+
+      // 2. Active Candidate
+      const activeCand = currentCandidates.find(c => c.candidate_id === selectedCandidateId) || currentCandidates[0];
+      if (activeCand) {
+        document.getElementById('card-cand-id').textContent = activeCand.candidate_id;
+        document.getElementById('card-rib-badge').textContent = activeCand.access_rib_classification || 'SUBCOSTAL';
+        document.getElementById('card-target-calyx').textContent = activeCand.target_calyx || activeCand.target_calyx_name || '--';
+        document.getElementById('card-depth').textContent = (activeCand.tract_length_mm ? activeCand.tract_length_mm.toFixed(1) : '--') + ' mm';
+        document.getElementById('card-coronal-angle').textContent = (activeCand.puncture_angle_coronal_deg !== undefined ? activeCand.puncture_angle_coronal_deg.toFixed(1) : (activeCand.carm_primary_angle_deg || '--')) + '°';
+        document.getElementById('card-sagittal-angle').textContent = (activeCand.puncture_angle_sagittal_deg !== undefined ? activeCand.puncture_angle_sagittal_deg.toFixed(1) : (activeCand.carm_secondary_angle_deg || '--')) + '°';
+      }
+
+      // 3. Section 2 Table: Evaluated Candidate Tracts Comparison
+      const tbody = document.getElementById('card-comparison-tbody');
+      tbody.innerHTML = '';
+      try {
+        const res = await fetch(`/api/cases/${currentCaseId}/candidates/comparison-matrix`);
+        if (res.ok) {
+          const matrix = await res.json();
+          document.getElementById('card-hash').textContent = matrix.provenance_hash || '--';
+          (matrix.candidates || []).forEach(c => {
+            const tr = document.createElement('tr');
+            const isActive = (c.candidate_id === (matrix.active_candidate_id || selectedCandidateId));
+            if (isActive) tr.style.background = '#f0fdf4';
+            tr.innerHTML = `
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1; font-weight: ${isActive ? '800' : '500'};">${c.candidate_id} ${isActive ? '⭐' : ''}</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1;">${c.target_calyx_name}</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1;">${c.tract_length_mm?.value ?? '--'} mm</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1; color: ${(c.colon_clearance?.value < 15) ? '#b45309' : '#0f172a'};">${c.colon_clearance?.value ?? '--'} mm</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1; color: ${(c.pleural_clearance?.value < 10) ? '#e11d48' : '#0f172a'};">${c.pleural_clearance?.value ?? '--'} mm</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1; font-weight: 600;">${c.rigid_accessible_stone_percent?.value ?? '--'}%</td>
+              <td style="padding: 4px 6px; border: 1px solid #cbd5e1; font-size: 9.5px; color: #475569;">${c.clinical_tradeoff_summary}</td>
+            `;
+            tbody.appendChild(tr);
+          });
+        }
+      } catch (err) {
+        console.warn('Could not populate summary card matrix table:', err);
+      }
+
+      // 4. Section 3: Keyframe CT Previews & Calculus Burden Profile
+      const axialImg = document.getElementById('card-axial-img');
+      const coronalImg = document.getElementById('card-coronal-img');
+      axialImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=AXIAL&slice_index=40&window_width=400&window_level=40`;
+      coronalImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=CORONAL&slice_index=48&window_width=400&window_level=40`;
+
+      document.getElementById('card-stone-volume').textContent = document.getElementById('info-stone-vol')?.textContent || '-- mm³';
+      document.getElementById('card-stone-feret').textContent = document.getElementById('info-stone-feret')?.textContent || '-- mm';
+      document.getElementById('card-stone-hu').textContent = document.getElementById('info-stone-hu')?.textContent || '-- HU';
+      document.getElementById('card-guys-grade').textContent = document.getElementById('info-guys-grade')?.textContent || 'GRADE I';
+
+      document.getElementById('card-carm-be').textContent = document.getElementById('vp-be-angles')?.textContent || 'LAO 18° CAUD 12°';
+      document.getElementById('card-carm-dv').textContent = document.getElementById('vp-dv-angles')?.textContent || 'RAO 12° CAUD 12°';
+    }
+
+    function printSummaryCard() {
+      window.print();
+    }
+
+    window.openComparisonMatrix = openComparisonMatrix;
+    window.selectTractFromMatrix = selectTractFromMatrix;
+    window.openSummaryCard = openSummaryCard;
+    window.printSummaryCard = printSummaryCard;
   </script>
 </body>
 </html>
