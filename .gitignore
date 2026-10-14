@@ -28,7 +28,9 @@ data/raw/*
 data/processed/*
 data/outputs/*
 data/cases/*
+data/usability_sessions/*
 !data/cases/.gitkeep
+!data/usability_sessions/.gitkeep
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/outputs/.gitkeep

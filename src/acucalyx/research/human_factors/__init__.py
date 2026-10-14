@@ -14,6 +14,21 @@ from acucalyx.research.human_factors.task_analysis import (
     STANDARD_URRA_MATRIX,
 )
 
+from acucalyx.research.human_factors.psychometrics import (
+    NasaTlxRtlxAssessment,
+    SystemUsabilityScaleAssessment,
+    PsychometricCohortAnalyzer,
+)
+from acucalyx.research.human_factors.usability_protocol import (
+    ClinicianRole,
+    STANDARD_USABILITY_SCENARIOS,
+    SurgeonDiscoveryGuide,
+    UsabilityCondition,
+    UsabilityScenario,
+    UsabilityStudySession,
+    UsabilityTrialRecord,
+)
+
 __all__ = [
     "AcuCalyxUseSpecification",
     "UserPopulationProfile",
@@ -22,4 +37,14 @@ __all__ = [
     "UseRelatedRiskAnalysisItem",
     "STANDARD_CRITICAL_TASKS",
     "STANDARD_URRA_MATRIX",
+    "NasaTlxRtlxAssessment",
+    "SystemUsabilityScaleAssessment",
+    "PsychometricCohortAnalyzer",
+    "ClinicianRole",
+    "STANDARD_USABILITY_SCENARIOS",
+    "SurgeonDiscoveryGuide",
+    "UsabilityCondition",
+    "UsabilityScenario",
+    "UsabilityStudySession",
+    "UsabilityTrialRecord",
 ]

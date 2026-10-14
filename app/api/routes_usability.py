@@ -10,8 +10,10 @@ Provides REST endpoints for:
 """
 
 from datetime import datetime, timezone
+import json
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 import numpy as np
 
@@ -30,6 +32,15 @@ from acucalyx.research.human_factors.task_analysis import (
     STANDARD_URRA_MATRIX,
 )
 from acucalyx.research.human_factors.use_specification import STANDARD_USE_SPECIFICATION
+from acucalyx.research.human_factors.usability_protocol import (
+    ClinicianRole,
+    STANDARD_USABILITY_SCENARIOS,
+    SurgeonDiscoveryGuide,
+    UsabilityCondition,
+    UsabilityScenario,
+    UsabilityStudySession,
+    UsabilityTrialRecord,
+)
 from acucalyx.usability.or_protocol import (
     CarmCommunicationValidator,
     CarmProtocolGenerator,
@@ -97,6 +108,32 @@ class SUSSubmissionItem(BaseModel):
 
 class SUSCohortRequest(BaseModel):
     submissions: List[SUSSubmissionItem]
+
+
+class StartSessionRequest(BaseModel):
+    investigator_id: str = "Investigator_01"
+    session_id: Optional[str] = None
+
+
+class UsabilityTrialSubmissionRequest(BaseModel):
+    trial_id: Optional[str] = None
+    participant_id: str
+    participant_role: str = "ATTENDING_ENDOUROLOGIST"
+    experience_years: int = 10
+    scenario_id: str
+    condition: str = "ACUCALYX_WORKBENCH"  # 'CONVENTIONAL_BASELINE' or 'ACUCALYX_WORKBENCH'
+    task_start_time: str
+    task_end_time: str
+    task_duration_seconds: float
+    selected_candidate_id: str
+    selected_calyx_name: str
+    accepted_automated_proposal: bool = True
+    clinician_override_applied: bool = False
+    override_type: Optional[str] = None
+    override_rationale: Optional[str] = None
+    critical_errors_observed: List[str] = Field(default_factory=list)
+    nasa_tlx: Optional[Dict[str, float]] = None
+    sus_responses: Optional[List[int]] = None
 
 
 # Endpoints
@@ -404,3 +441,219 @@ def analyze_sus_cohort(request: SUSCohortRequest):
         "proportion_meeting_benchmark_80_pct": float(res.proportion_meeting_benchmark_80_pct),
         "adjective_distribution": {str(k): int(v) for k, v in res.adjective_distribution.items()}
     }
+
+
+# Session State Registry
+USABILITY_SESSIONS_DIR = Path(__file__).resolve().parent.parent.parent / "data" / "usability_sessions"
+USABILITY_SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+_ACTIVE_SESSIONS: Dict[str, UsabilityStudySession] = {}
+
+
+@router.get("/scenarios")
+def list_usability_scenarios():
+    """Returns standardized PCNL challenge scenarios for formative usability testing."""
+    return [
+        {
+            "scenario_id": s.scenario_id,
+            "title": s.title,
+            "clinical_summary": s.clinical_summary,
+            "challenge_category": s.challenge_category,
+            "target_kidney_side": s.target_kidney_side,
+            "stone_burden_description": s.stone_burden_description,
+            "primary_tradeoffs": s.primary_tradeoffs,
+            "benchmark_reference_tract": s.benchmark_reference_tract,
+            "contraindicated_tracts": s.contraindicated_tracts,
+            "complexity_tier": s.complexity_tier
+        }
+        for s in STANDARD_USABILITY_SCENARIOS.values()
+    ]
+
+
+@router.get("/discovery/interview-guide")
+def get_surgeon_discovery_guide():
+    """Returns the structured Surgeon Discovery Interview Protocol schema (Milestone M14.5)."""
+    return SurgeonDiscoveryGuide.get_protocol_schema()
+
+
+@router.get("/discovery/interview-guide/markdown")
+def get_surgeon_discovery_markdown():
+    """Returns a printable Markdown interview worksheet for clinician sessions."""
+    md = SurgeonDiscoveryGuide.generate_markdown_interview_sheet()
+    return Response(content=md, media_type="text/markdown")
+
+
+@router.post("/sessions/start")
+def start_usability_session(request: StartSessionRequest):
+    """Initializes a new formative usability testing session."""
+    now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_id = request.session_id or f"SESS_USABILITY_{now_str}"
+    session = UsabilityStudySession(
+        session_id=session_id,
+        investigator_id=request.investigator_id
+    )
+    _ACTIVE_SESSIONS[session_id] = session
+
+    # Persist session descriptor
+    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+    with open(session_file, "w", encoding="utf-8") as f:
+        json.dump({
+            "session_id": session_id,
+            "investigator_id": request.investigator_id,
+            "created_at": session.created_at,
+            "trials": []
+        }, f, indent=2)
+
+    return {
+        "session_id": session_id,
+        "investigator_id": request.investigator_id,
+        "created_at": session.created_at,
+        "status": "INITIALIZED"
+    }
+
+
+@router.post("/sessions/{session_id}/trials")
+def submit_usability_trial(session_id: str, request: UsabilityTrialSubmissionRequest):
+    """Records an individual trial evaluation record within an active usability session."""
+    session = _ACTIVE_SESSIONS.get(session_id)
+    if not session:
+        # Try loading from disk
+        session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+        if session_file.is_file():
+            with open(session_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            session = UsabilityStudySession(
+                session_id=session_id,
+                investigator_id=data.get("investigator_id", "UNKNOWN")
+            )
+            _ACTIVE_SESSIONS[session_id] = session
+        else:
+            session = UsabilityStudySession(session_id=session_id, investigator_id="AUTO_INIT")
+            _ACTIVE_SESSIONS[session_id] = session
+
+    trial_id = request.trial_id or f"TRIAL_{datetime.now().strftime('%H%M%S_%f')}"
+
+    # Build NASA-TLX object if provided
+    tlx_obj = None
+    if request.nasa_tlx:
+        tlx_obj = NasaTlxRtlxAssessment(
+            participant_id=request.participant_id,
+            condition_id=request.condition,
+            mental_demand=float(request.nasa_tlx.get("mental_demand", 0.0)),
+            physical_demand=float(request.nasa_tlx.get("physical_demand", 0.0)),
+            temporal_demand=float(request.nasa_tlx.get("temporal_demand", 0.0)),
+            performance=float(request.nasa_tlx.get("performance", 0.0)),
+            effort=float(request.nasa_tlx.get("effort", 0.0)),
+            frustration=float(request.nasa_tlx.get("frustration", 0.0))
+        )
+
+    # Build SUS object if provided
+    sus_obj = None
+    if request.sus_responses and len(request.sus_responses) == 10:
+        sus_obj = SystemUsabilityScaleAssessment(
+            participant_id=request.participant_id,
+            item_responses=request.sus_responses
+        )
+
+    trial_rec = UsabilityTrialRecord(
+        trial_id=trial_id,
+        session_id=session_id,
+        participant_id=request.participant_id,
+        participant_role=ClinicianRole(request.participant_role) if request.participant_role in [e.value for e in ClinicianRole] else ClinicianRole.ATTENDING_ENDOUROLOGIST,
+        experience_years=request.experience_years,
+        scenario_id=request.scenario_id,
+        condition=UsabilityCondition(request.condition) if request.condition in [e.value for e in UsabilityCondition] else UsabilityCondition.ACUCALYX_WORKBENCH,
+        task_start_time=request.task_start_time,
+        task_end_time=request.task_end_time,
+        task_duration_seconds=request.task_duration_seconds,
+        selected_candidate_id=request.selected_candidate_id,
+        selected_calyx_name=request.selected_calyx_name,
+        accepted_automated_proposal=request.accepted_automated_proposal,
+        clinician_override_applied=request.clinician_override_applied,
+        override_type=request.override_type,
+        override_rationale=request.override_rationale,
+        critical_errors_observed=request.critical_errors_observed,
+        nasa_tlx=tlx_obj,
+        sus=sus_obj
+    )
+
+    session.record_trial(trial_rec)
+
+    # Persist updated session to disk
+    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+    with open(session_file, "w", encoding="utf-8") as f:
+        json.dump({
+            "session_id": session_id,
+            "investigator_id": session.investigator_id,
+            "created_at": session.created_at,
+            "trials": [t.to_dict() for t in session.trials]
+        }, f, indent=2)
+
+    return {
+        "status": "RECORDED",
+        "trial_id": trial_id,
+        "session_id": session_id,
+        "trials_in_session": len(session.trials)
+    }
+
+
+@router.get("/sessions/{session_id}/report")
+def get_usability_session_report(session_id: str):
+    """Compiles and exports the complete IEC 62366-1 Formative Usability Report."""
+    session = _ACTIVE_SESSIONS.get(session_id)
+    if not session:
+        session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+        if not session_file.is_file():
+            raise HTTPException(status_code=404, detail=f"Usability session '{session_id}' not found.")
+        with open(session_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        session = UsabilityStudySession(
+            session_id=session_id,
+            investigator_id=data.get("investigator_id", "UNKNOWN")
+        )
+        for t_dict in data.get("trials", []):
+            tlx_dict = t_dict.get("nasa_tlx")
+            tlx = (
+                NasaTlxRtlxAssessment(
+                    participant_id=t_dict["participant_id"],
+                    condition_id=t_dict["condition"],
+                    mental_demand=tlx_dict["mental_demand"],
+                    physical_demand=tlx_dict["physical_demand"],
+                    temporal_demand=tlx_dict["temporal_demand"],
+                    performance=tlx_dict["performance"],
+                    effort=tlx_dict["effort"],
+                    frustration=tlx_dict["frustration"]
+                )
+                if tlx_dict else None
+            )
+            sus_dict = t_dict.get("sus")
+            sus = (
+                SystemUsabilityScaleAssessment(
+                    participant_id=t_dict["participant_id"],
+                    item_responses=sus_dict["item_responses"]
+                )
+                if sus_dict else None
+            )
+            session.record_trial(UsabilityTrialRecord(
+                trial_id=t_dict["trial_id"],
+                session_id=session_id,
+                participant_id=t_dict["participant_id"],
+                participant_role=ClinicianRole(t_dict["participant_role"]),
+                experience_years=t_dict["experience_years"],
+                scenario_id=t_dict["scenario_id"],
+                condition=UsabilityCondition(t_dict["condition"]),
+                task_start_time=t_dict["task_start_time"],
+                task_end_time=t_dict["task_end_time"],
+                task_duration_seconds=t_dict["task_duration_seconds"],
+                selected_candidate_id=t_dict["selected_candidate_id"],
+                selected_calyx_name=t_dict["selected_calyx_name"],
+                accepted_automated_proposal=t_dict["accepted_automated_proposal"],
+                clinician_override_applied=t_dict["clinician_override_applied"],
+                override_type=t_dict.get("override_type"),
+                override_rationale=t_dict.get("override_rationale"),
+                critical_errors_observed=t_dict.get("critical_errors_observed", []),
+                nasa_tlx=tlx,
+                sus=sus
+            ))
+        _ACTIVE_SESSIONS[session_id] = session
+
+    return session.compute_summary_analytics()
