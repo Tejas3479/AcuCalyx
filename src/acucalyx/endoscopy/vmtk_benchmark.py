@@ -191,28 +191,11 @@ print("VMTK Centerline Extraction Complete.")
             pts_out[-1] = end_point_lps
             return pts_out
 
-        # Fallback to distance-guided linear interpolation if disconnected
-        t_vals = np.linspace(0.0, 1.0, n_steps)
-        pts_out = np.zeros((n_steps, 3), dtype=float)
-        for i, t in enumerate(t_vals):
-            base_pt = (1.0 - t) * start_point_lps + t * end_point_lps
-            vz, vy, vx = lps_to_vox(base_pt)
-            z_win = slice(max(0, vz - 2), min(dist_map.shape[0], vz + 3))
-            y_win = slice(max(0, vy - 2), min(dist_map.shape[1], vy + 3))
-            x_win = slice(max(0, vx - 2), min(dist_map.shape[2], vx + 3))
-            sub = dist_map[z_win, y_win, x_win]
-            if sub.size > 0 and sub.max() > 0:
-                rel_max = np.unravel_index(np.argmax(sub), sub.shape)
-                snap_z = (z_win.start + rel_max[0]) * spacing_mm[2] + origin_lps[2]
-                snap_y = (y_win.start + rel_max[1]) * spacing_mm[1] + origin_lps[1]
-                snap_x = (x_win.start + rel_max[2]) * spacing_mm[0] + origin_lps[0]
-                pts_out[i] = 0.5 * base_pt + 0.5 * np.array([snap_x, snap_y, snap_z])
-            else:
-                pts_out[i] = base_pt
-
-        pts_out[0] = start_point_lps
-        pts_out[-1] = end_point_lps
-        return pts_out
+        # Fail closed if disconnected: computational approximation must not synthesize anatomy
+        raise RuntimeError(
+            "Dijkstra graph search failed: pelvicalyceal lumen is disconnected between seed points. "
+            "Cannot establish valid anatomical centerline."
+        )
 
     @staticmethod
     def compare_centerlines(
@@ -262,7 +245,7 @@ print("VMTK Centerline Extraction Complete.")
         d_ref_to_acu = np.min(dist_matrix, axis=0)  # (dense_eval,)
 
         symmetric_distances = np.concatenate([d_acu_to_ref, d_ref_to_acu])
-        mae = float(np.mean(d_acu_to_ref))
+        mae = float(np.mean(symmetric_distances))
         hausdorff_max = float(np.max(symmetric_distances))
         hausdorff_95 = float(np.percentile(symmetric_distances, 95))
 

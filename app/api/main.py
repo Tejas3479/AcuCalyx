@@ -17,6 +17,7 @@ import io
 import json
 import logging
 from pathlib import Path
+import re
 import shutil
 from typing import Any, Dict, List, Optional
 import zipfile
@@ -32,7 +33,16 @@ from acucalyx.audit.provenance import compute_sha256_file
 from acucalyx.cybersecurity.phi_guard import PHIGuard
 from acucalyx.pipeline import run_planning_pipeline, PlanningPipelineResult, SegmentationMethod
 from acucalyx.geometry.transforms import LineSegment3D
-from tests.phantom.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
+from acucalyx.synthetic.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
+from app.api.case_store import (
+    CASES_DIR,
+    get_case_dir,
+    get_case_meta_path,
+    load_case_meta,
+    save_case_meta,
+    log_case_audit_event,
+    validate_case_id,
+)
 from app.api.schemas import (
     CaseState, CaseSummaryResponse, CaseUploadResponse,
     PlanGenerationRequest, TrajectorySelectionRequest, ManualOverrideRequest,
@@ -45,9 +55,7 @@ logger = logging.getLogger("acucalyx.api")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(name)s: %(message)s")
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CASES_DIR = BASE_DIR / "data" / "cases"
 FRONTEND_DIR = BASE_DIR / "app" / "frontend"
-CASES_DIR.mkdir(parents=True, exist_ok=True)
 FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(
@@ -58,7 +66,14 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -101,43 +116,6 @@ def set_cached_volume(case_id: str, vol: np.ndarray, spatial: Any) -> None:
     _ACTIVE_VOLUMES[case_id] = {"volume": vol, "spatial": spatial}
 
 
-def get_case_meta_path(case_id: str) -> Path:
-    return CASES_DIR / case_id / "case_meta.json"
-
-
-def load_case_meta(case_id: str) -> Dict[str, Any]:
-    meta_path = get_case_meta_path(case_id)
-    if not meta_path.is_file():
-        raise HTTPException(status_code=404, detail=f"Case '{case_id}' not found")
-    with open(meta_path, "r") as f:
-        return json.load(f)
-
-
-def save_case_meta(case_id: str, meta: Dict[str, Any]) -> None:
-    meta_path = get_case_meta_path(case_id)
-    meta_path.parent.mkdir(parents=True, exist_ok=True)
-    meta["updated_at"] = datetime.now(timezone.utc).isoformat()
-    with open(meta_path, "w") as f:
-        json.dump(meta, f, indent=2)
-
-
-def log_case_audit_event(case_id: str, action: str, details: Dict[str, Any], user: str = "System") -> None:
-    audit_path = CASES_DIR / case_id / "audit_trail.json"
-    events = []
-    if audit_path.is_file():
-        try:
-            with open(audit_path, "r") as f:
-                events = json.load(f)
-        except Exception:
-            events = []
-    events.append({
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "user": user,
-        "action": action,
-        "details": details
-    })
-    with open(audit_path, "w") as f:
-        json.dump(events, f, indent=2)
 
 
 @app.get("/api/health")
@@ -216,6 +194,20 @@ def create_demo_case():
         "active_candidate_id": None,
         "stone_count": 1,
         "candidate_count": 0,
+        "laterality_confirmation": {
+            "is_verified": True,
+            "confirmed_side": "left",
+            "ct_metadata_side": "left",
+            "verified_at": now_iso,
+            "is_two_step_confirmed": True,
+            "source": "SYNTHETIC_CALIBRATION_GROUND_TRUTH"
+        },
+        "surgical_position_confirmation": {
+            "is_confirmed": True,
+            "operative_position": "PRONE_STANDARD",
+            "ct_acquisition_position": "HFS",
+            "confirmed_at": now_iso
+        },
         "clinical_notice": "Synthetic analytical CT calibration phantom."
     }
     save_case_meta(case_id, meta)
@@ -235,31 +227,70 @@ def create_demo_case():
     )
 
 
+MAX_UPLOAD_SIZE = 500 * 1024 * 1024  # 500 MB limit
+MAX_ZIP_EXTRACT_SIZE = 2 * 1024 * 1024 * 1024  # 2 GB uncompressed limit
+MAX_ZIP_FILES = 2000
+
+
 @app.post("/api/cases/upload", response_model=CaseUploadResponse)
 async def upload_case(file: UploadFile = File(...), target_side: str = Query(default="left")):
     """Uploads a CT series (either a .zip containing DICOM slices or a .nii/.nii.gz file)."""
-    filename = file.filename or "uploaded_ct"
-    stem = Path(filename).stem.replace(".nii", "").replace(" ", "_")
+    raw_filename = file.filename or "uploaded_ct"
+    safe_filename = Path(raw_filename).name
+    safe_filename = re.sub(r"[^A-Za-z0-9_.-]", "_", safe_filename)
+    if not safe_filename or safe_filename.startswith("."):
+        safe_filename = f"series_{datetime.now().strftime('%H%M%S')}.dcm"
+
+    stem = Path(safe_filename).stem.replace(".nii", "").replace(" ", "_")
+    stem = re.sub(r"[^A-Za-z0-9_-]", "_", stem)
     case_id = f"CASE_{stem}_{datetime.now().strftime('%H%M%S')}"
 
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     raw_dir = case_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = raw_dir / filename
+    dest_path = raw_dir / safe_filename
 
-    content = await file.read()
+    # Stream file to disk in bounded chunks to prevent RAM exhaustion
+    total_bytes = 0
     with open(dest_path, "wb") as f:
-        f.write(content)
+        while chunk := await file.read(1024 * 1024):
+            total_bytes += len(chunk)
+            if total_bytes > MAX_UPLOAD_SIZE:
+                dest_path.unlink(missing_ok=True)
+                shutil.rmtree(case_dir, ignore_errors=True)
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Upload payload exceeds maximum allowable size of {MAX_UPLOAD_SIZE // (1024*1024)} MB."
+                )
+            f.write(chunk)
 
     input_file_count = 1
     input_path = dest_path
 
-    # If zip, extract slices
-    if filename.lower().endswith(".zip"):
+    # If zip, inspect and safely extract slices
+    if safe_filename.lower().endswith(".zip"):
         extract_dir = raw_dir / "dicom_series"
         extract_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(dest_path, "r") as z:
-            z.extractall(extract_dir)
+        try:
+            with zipfile.ZipFile(dest_path, "r") as z:
+                infolist = z.infolist()
+                if len(infolist) > MAX_ZIP_FILES:
+                    shutil.rmtree(case_dir, ignore_errors=True)
+                    raise HTTPException(status_code=400, detail=f"Archive contains {len(infolist)} files, exceeding limit of {MAX_ZIP_FILES}.")
+                total_uncompressed = sum(info.file_size for info in infolist)
+                if total_uncompressed > MAX_ZIP_EXTRACT_SIZE:
+                    shutil.rmtree(case_dir, ignore_errors=True)
+                    raise HTTPException(status_code=400, detail=f"Archive uncompressed size ({total_uncompressed // (1024*1024)} MB) exceeds limit.")
+                for member in infolist:
+                    member_path = (extract_dir / member.filename).resolve()
+                    if not str(member_path).startswith(str(extract_dir.resolve())):
+                        shutil.rmtree(case_dir, ignore_errors=True)
+                        raise HTTPException(status_code=400, detail=f"Illegal path in archive: {member.filename}")
+                z.extractall(extract_dir)
+        except zipfile.BadZipFile:
+            shutil.rmtree(case_dir, ignore_errors=True)
+            raise HTTPException(status_code=400, detail="Corrupted or invalid ZIP archive.")
+
         dcm_files = [p for p in extract_dir.rglob("*") if p.is_file() and not p.name.startswith(".")]
         input_file_count = len(dcm_files)
         input_path = extract_dir
@@ -280,7 +311,7 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
         if scrubbed_count > 0:
             logger.info(f"PHIGuard: Successfully scrubbed direct PHI from {scrubbed_count} slices for case {case_id}")
             log_case_audit_event(case_id, "PHI_SCRUBBED_INGESTION", {"scrubbed_slices": scrubbed_count})
-    elif filename.lower().endswith(".dcm"):
+    elif safe_filename.lower().endswith(".dcm"):
         try:
             import pydicom
             phi_guard = PHIGuard()
@@ -304,10 +335,12 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
         "active_candidate_id": None,
         "stone_count": 0,
         "candidate_count": 0,
-        "clinical_notice": f"Uploaded {input_file_count} file(s). Ready for planning."
+        "laterality_confirmation": None,
+        "surgical_position_confirmation": None,
+        "clinical_notice": f"Uploaded {input_file_count} file(s). Mandatory laterality verification required prior to planning."
     }
     save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "CASE_UPLOADED", {"filename": filename, "file_count": input_file_count})
+    log_case_audit_event(case_id, "CASE_UPLOADED", {"filename": safe_filename, "file_count": input_file_count})
 
     return CaseUploadResponse(
         case_id=case_id,
@@ -339,7 +372,7 @@ def get_case_status(case_id: str):
 def run_case_planning(case_id: str, req: PlanGenerationRequest):
     """Executes the full planning pipeline, generating Pareto candidates, 3D meshes, and report."""
     meta = load_case_meta(case_id)
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     artifacts_dir = case_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -349,6 +382,27 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
 
     # Server-controlled execution mode enforcement (Gate 0 Safety Invariant)
     is_demo = meta.get("is_demo", False)
+
+    # Server-side enforcement of Laterality Verification Interlock (U1)
+    if not is_demo:
+        lat_conf = meta.get("laterality_confirmation")
+        if not lat_conf or not lat_conf.get("is_verified", False):
+            raise HTTPException(
+                status_code=412,
+                detail=(
+                    "Precondition Failed: Interlock U1 Laterality Verification Gate must be completed "
+                    "and signed off by the clinician before access planning can proceed."
+                )
+            )
+        confirmed_side = str(lat_conf.get("confirmed_side", "")).lower()
+        if confirmed_side != req.target_side.lower():
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Laterality Mismatch: Planning requested for '{req.target_side}' kidney, "
+                    f"but verified clinical laterality is '{confirmed_side}'. Re-verify laterality."
+                )
+            )
     pipeline_cfg = {
         "coarse_step_mm": req.coarse_step_mm,
         "monte_carlo_samples": req.monte_carlo_samples,
@@ -697,14 +751,22 @@ def get_candidate_comparison_matrix(case_id: str):
         )
 
         effective_vals = [h.get("effective_clearance_mm") for h in c.get("hazards", []) if h.get("effective_clearance_mm") is not None]
-        min_eff = min(effective_vals) if effective_vals else 99.0
-        vascular_clearance = MetricValue(
-            value=float(min_eff),
-            unit="mm",
-            status="ESTIMATED",
-            confidence="MEDIUM",
-            reason="Estimated from regional segmental risk corridor distance field."
-        )
+        if effective_vals:
+            vascular_clearance = MetricValue(
+                value=float(min(effective_vals)),
+                unit="mm",
+                status="DERIVED",
+                confidence="MEDIUM",
+                reason="Derived from regional segmental hazard corridor distance field."
+            )
+        else:
+            vascular_clearance = MetricValue(
+                value=None,
+                unit="mm",
+                status="NOT_EVALUABLE",
+                confidence="UNASSESSED",
+                reason="Major renal vascular structures not segmented or evaluated on this series."
+            )
 
         intercostal_clearance = None
         if rib_h:
@@ -716,8 +778,17 @@ def get_candidate_comparison_matrix(case_id: str):
             )
 
         reachable_fraction = float(c.get("reachable_stone_fraction", 0.0))
-        rigid_stone_vol = total_stone_vol * reachable_fraction if stone_data_present else 0.0
-        rigid_stone_pct = reachable_fraction * 100.0
+        if stone_data_present and total_stone_vol > 0:
+            rigid_stone_vol = total_stone_vol * reachable_fraction
+            rigid_stone_pct = reachable_fraction * 100.0
+            rigid_vol_metric = MetricValue(value=round(rigid_stone_vol, 1), unit="mm3", status="DERIVED")
+            rigid_pct_metric = MetricValue(value=round(rigid_stone_pct, 1), unit="%", status="DERIVED")
+            inaccessible_metric = MetricValue(value=round(max(0.0, total_stone_vol - rigid_stone_vol), 1), unit="mm3", status="DERIVED")
+        else:
+            rigid_stone_pct = 0.0
+            rigid_vol_metric = MetricValue(value=None, unit="mm3", status="NOT_EVALUABLE", confidence="UNASSESSED", reason="Calculus burden not segmented on this case.")
+            rigid_pct_metric = MetricValue(value=None, unit="%", status="NOT_EVALUABLE", confidence="UNASSESSED", reason="Calculus burden not segmented on this case.")
+            inaccessible_metric = MetricValue(value=None, unit="mm3", status="NOT_EVALUABLE", confidence="UNASSESSED", reason="Calculus burden not segmented on this case.")
 
         rib_rel = c.get("access_rib_classification", "SUBCOSTAL")
         if "INTERCOSTAL" in rib_rel or "SUPRACOSTAL" in rib_rel:
@@ -756,8 +827,9 @@ def get_candidate_comparison_matrix(case_id: str):
         dy = target_lps[1] - entry_lps[1]
         dz = target_lps[2] - entry_lps[2]
 
-        coronal_angle = float(np.degrees(np.arctan2(abs(dy), abs(dx) + 1e-6)))
-        sagittal_angle = float(np.degrees(np.arctan2(abs(dz), abs(dy) + 1e-6)))
+        # Signed directional projection angles in physical LPS coordinates
+        coronal_angle = float(np.degrees(np.arctan2(dz, dx + 1e-6)))
+        sagittal_angle = float(np.degrees(np.arctan2(dz, dy + 1e-6)))
 
         items.append(CandidateComparisonItem(
             candidate_id=c["candidate_id"],
@@ -773,41 +845,35 @@ def get_candidate_comparison_matrix(case_id: str):
             colon_clearance=colon_clearance,
             vascular_clearance=vascular_clearance,
             intercostal_bundle_clearance=intercostal_clearance,
-            rigid_accessible_stone_volume_mm3=MetricValue(
-                value=round(rigid_stone_vol, 1) if stone_data_present else None,
-                unit="mm3",
-                status="DERIVED" if stone_data_present else "NOT_EVALUABLE"
-            ),
-            rigid_accessible_stone_percent=MetricValue(
-                value=round(rigid_stone_pct, 1),
-                unit="%",
-                status="DERIVED"
-            ),
+            rigid_accessible_stone_volume_mm3=rigid_vol_metric,
+            rigid_accessible_stone_percent=rigid_pct_metric,
             flexible_accessible_stone_volume_mm3=MetricValue(
-                value=round(rigid_stone_vol, 1) if stone_data_present else None,
+                value=None,
                 unit="mm3",
-                status="ESTIMATED" if stone_data_present else "NOT_EVALUABLE"
+                status="NOT_EVALUABLE",
+                confidence="UNASSESSED",
+                reason="Flexible scope deflection and active secondary reachability model not evaluated on this trajectory."
             ),
             flexible_accessible_stone_percent=MetricValue(
-                value=round(min(100.0, rigid_stone_pct * 1.2), 1),
+                value=None,
                 unit="%",
-                status="ESTIMATED"
+                status="NOT_EVALUABLE",
+                confidence="UNASSESSED",
+                reason="Flexible scope deflection and active secondary reachability model not evaluated on this trajectory."
             ),
-            inaccessible_stone_volume_mm3=MetricValue(
-                value=round(max(0.0, total_stone_vol - rigid_stone_vol), 1) if stone_data_present else None,
-                unit="mm3",
-                status="DERIVED" if stone_data_present else "NOT_EVALUABLE"
-            ),
+            inaccessible_stone_volume_mm3=inaccessible_metric,
             caliber_suitability_considerations=caliber_text,
             irrigation_pressure_risk=irrigation_risk,
             uncertainty_flags=unc_flags,
             clinical_tradeoff_summary=tradeoff_summary
         ))
 
+    patient_pos = meta.get("surgical_position_confirmation", {}).get("operative_position", "PRONE_STANDARD")
+
     return CandidateComparisonMatrixResponse(
         case_id=case_id,
-        imaging_modality="NON_CONTRAST_CT" if meta.get("is_demo") else "CT_SERIES",
-        patient_position_assumed="PRONE",
+        imaging_modality="NON_CONTRAST_CT" if meta.get("is_demo") else meta.get("modality", "CT_SERIES"),
+        patient_position_assumed=patient_pos,
         total_stone_volume_mm3=MetricValue(
             value=round(total_stone_vol, 1) if stone_data_present else None,
             unit="mm3",

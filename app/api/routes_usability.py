@@ -9,10 +9,13 @@ Provides REST endpoints for:
 - Psychometric Cognitive Workload (NASA-TLX RTLX) and System Usability Scale (SUS) Cohort Analytics
 """
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 import numpy as np
+
+from app.api.case_store import load_case_meta, save_case_meta, log_case_audit_event
 
 from acucalyx.fluoroscopy.carm_profile import PHILIPS_ZENITION_70, get_carm_profile
 from acucalyx.fluoroscopy.surgical_pose import SurgicalPatientPosition
@@ -171,6 +174,37 @@ def confirm_laterality(case_id: str, request: LateralityConfirmRequest):
     )
     if not result.is_laterality_verified:
         raise HTTPException(status_code=400, detail=result.error_message)
+
+    # Persist authoritative laterality confirmation state
+    try:
+        meta = load_case_meta(case_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            meta = {
+                "case_id": case_id,
+                "is_demo": False,
+                "state": "READY",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            raise
+    meta["laterality_confirmation"] = {
+        "is_verified": True,
+        "confirmed_side": result.confirmed_side.lower(),
+        "ct_metadata_side": result.ct_metadata_side.lower(),
+        "verified_at": datetime.now(timezone.utc).isoformat(),
+        "landmark_checks": request.landmark_checks,
+        "is_two_step_confirmed": request.is_two_step_confirmed
+    }
+    meta["target_side"] = result.confirmed_side.lower()
+    save_case_meta(case_id, meta)
+    log_case_audit_event(case_id, "LATERALITY_CONFIRMED", {
+        "confirmed_side": result.confirmed_side,
+        "ct_metadata_side": result.ct_metadata_side,
+        "landmark_checks": request.landmark_checks
+    })
+
     return {
         "case_id": case_id,
         "verified": True,
@@ -189,6 +223,34 @@ def confirm_surgical_position(case_id: str, request: PositionConfirmRequest):
     )
     if not ok:
         raise HTTPException(status_code=400, detail=msg)
+
+    # Persist authoritative surgical position confirmation state
+    try:
+        meta = load_case_meta(case_id)
+    except HTTPException as e:
+        if e.status_code == 404:
+            meta = {
+                "case_id": case_id,
+                "is_demo": False,
+                "state": "READY",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat(),
+            }
+        else:
+            raise
+    meta["surgical_position_confirmation"] = {
+        "is_confirmed": True,
+        "operative_position": request.planned_operative_position.value,
+        "ct_acquisition_position": request.ct_acquisition_position,
+        "confirmed_at": datetime.now(timezone.utc).isoformat(),
+        "transformation_matrix_4x4": t_mat.tolist() if t_mat is not None else None
+    }
+    save_case_meta(case_id, meta)
+    log_case_audit_event(case_id, "SURGICAL_POSITION_CONFIRMED", {
+        "operative_position": request.planned_operative_position.value,
+        "ct_acquisition_position": request.ct_acquisition_position
+    })
+
     return {
         "case_id": case_id,
         "confirmed": True,

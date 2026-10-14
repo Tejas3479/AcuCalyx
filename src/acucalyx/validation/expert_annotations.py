@@ -142,7 +142,7 @@ def evaluate_expert_candidate_coverage(
             case_id="UNKNOWN",
             total_expert_strategies=0,
             covered_expert_strategies=0,
-            coverage_fraction=1.0,
+            coverage_fraction=0.0,
             per_expert_coverage={},
             best_match_details=[]
         )
@@ -233,8 +233,11 @@ def compile_multi_expert_consensus(
     Enforces minimum 2-rater invariant for clinical benchmarking.
     Calculates natural human surgical variance (angular spread, entry dispersion).
     """
-    if len(plans) < 1:
-        raise ValueError("Cannot compile consensus from empty expert plan list.")
+    if len(plans) < 2:
+        raise ValueError(
+            f"Cannot compile multi-expert consensus from {len(plans)} plan(s). "
+            "Minimum 2 independent raters required to evaluate inter-rater concordance and variance."
+        )
 
     case_id = plans[0].case_id
     calyces = [p.preferred_calyx_group for p in plans]

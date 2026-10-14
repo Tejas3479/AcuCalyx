@@ -17,14 +17,17 @@ torch>=2.1.0
 # Web API & Configuration
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
+python-multipart>=0.0.6
 pydantic>=2.4.0
 pyyaml>=6.0.1
 
 # Reporting & Visualization
 reportlab>=4.0.0
 matplotlib>=3.8.0
+pillow>=10.0.0
 
 # Testing & Quality Assurance
 pytest>=7.4.0
 pytest-cov>=4.1.0
 hypothesis>=6.80.0
+httpx>=0.25.0

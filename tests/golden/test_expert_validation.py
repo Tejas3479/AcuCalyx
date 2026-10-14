@@ -71,7 +71,7 @@ def test_multi_expert_consensus_aggregation():
 
 def test_validation_harness_concordant_case():
     """Verifies that an algorithmic candidate matching expert consensus achieves PLANNING_ELIGIBLE."""
-    plan_uro = ExpertAccessPlan(
+    plan_uro_1 = ExpertAccessPlan(
         case_id="CASE_VAL_01",
         assessor_id="EXP_URO_01",
         assessor_role="UROLOGIST",
@@ -90,7 +90,26 @@ def test_validation_harness_concordant_case():
         rationale="Ideal subcostal puncture.",
         timestamp="2026-09-30T11:00:00Z"
     )
-    consensus = compile_multi_expert_consensus([plan_uro])
+    plan_uro_2 = ExpertAccessPlan(
+        case_id="CASE_VAL_01",
+        assessor_id="EXP_URO_02",
+        assessor_role="UROLOGIST",
+        experience_years=9,
+        patient_position_assumed="PRONE",
+        target_visibility="DIRECT",
+        preferred_calyx_group=CalyxGroup.POSTERIOR_LOWER,
+        preferred_puncture_zone="ZONE_LOWER",
+        target_center_lps_mm=np.array([20.0, 10.0, 30.0]),
+        target_normal_vector=np.array([0.0, -1.0, 0.0]),
+        planned_skin_entry_lps_mm=np.array([20.5, 65.5, 30.0]),
+        acceptable_calyx_groups=[CalyxGroup.POSTERIOR_LOWER],
+        acceptable_target_region={"radius_mm": 5.0},
+        unacceptable_hazards=["COLON"],
+        confidence=0.9,
+        rationale="Subcostal lower pole access.",
+        timestamp="2026-09-30T11:15:00Z"
+    )
+    consensus = compile_multi_expert_consensus([plan_uro_1, plan_uro_2])
 
     # Algorithmic candidate matching consensus
     candidate = CandidateTrajectory(
@@ -131,7 +150,7 @@ def test_validation_harness_concordant_case():
 
 def test_validation_harness_catches_hazard_breach():
     """Verifies that any algorithmic candidate breaching hazard clearance is flagged REJECTED."""
-    plan_uro = ExpertAccessPlan(
+    plan_uro_1 = ExpertAccessPlan(
         case_id="CASE_VAL_02",
         assessor_id="EXP_URO_01",
         assessor_role="UROLOGIST",
@@ -150,7 +169,26 @@ def test_validation_harness_catches_hazard_breach():
         rationale="",
         timestamp=""
     )
-    consensus = compile_multi_expert_consensus([plan_uro])
+    plan_uro_2 = ExpertAccessPlan(
+        case_id="CASE_VAL_02",
+        assessor_id="EXP_URO_02",
+        assessor_role="UROLOGIST",
+        experience_years=8,
+        patient_position_assumed="PRONE",
+        target_visibility="DIRECT",
+        preferred_calyx_group=CalyxGroup.POSTERIOR_LOWER,
+        preferred_puncture_zone="ZONE_LOWER",
+        target_center_lps_mm=np.array([20.0, 10.0, 30.0]),
+        target_normal_vector=np.array([0.0, -1.0, 0.0]),
+        planned_skin_entry_lps_mm=np.array([20.0, 65.0, 30.0]),
+        acceptable_calyx_groups=[CalyxGroup.POSTERIOR_LOWER],
+        acceptable_target_region={},
+        unacceptable_hazards=["COLON"],
+        confidence=0.85,
+        rationale="",
+        timestamp=""
+    )
+    consensus = compile_multi_expert_consensus([plan_uro_1, plan_uro_2])
 
     # Unsafe candidate with zero clearance (breach)
     unsafe_candidate = CandidateTrajectory(
@@ -180,6 +218,42 @@ def test_validation_harness_catches_hazard_breach():
     assert report.critical_hazard_breaches_observed >= 1
     assert report.hazard_false_negative is True
     assert report.eligibility_status == "REJECTED_HAZARD_BREACH"
+
+
+def test_multi_expert_consensus_minimum_two_raters_and_empty_coverage():
+    """Verifies that compile_multi_expert_consensus rejects <2 raters and empty coverage returns 0.0."""
+    from acucalyx.validation.expert_annotations import evaluate_expert_candidate_coverage
+
+    plan_single = ExpertAccessPlan(
+        case_id="CASE_SINGLE",
+        assessor_id="EXP_01",
+        assessor_role="UROLOGIST",
+        experience_years=5,
+        patient_position_assumed="PRONE",
+        target_visibility="DIRECT",
+        preferred_calyx_group=CalyxGroup.POSTERIOR_LOWER,
+        preferred_puncture_zone="ZONE_LOWER",
+        target_center_lps_mm=np.array([0.0, 0.0, 0.0]),
+        target_normal_vector=np.array([0.0, 1.0, 0.0]),
+        planned_skin_entry_lps_mm=np.array([0.0, 50.0, 0.0]),
+        acceptable_calyx_groups=[],
+        acceptable_target_region={},
+        unacceptable_hazards=[],
+        confidence=1.0,
+        rationale="",
+        timestamp=""
+    )
+
+    # Must raise ValueError with 0 or 1 plan
+    with pytest.raises(ValueError, match="Minimum 2 independent raters"):
+        compile_multi_expert_consensus([])
+    with pytest.raises(ValueError, match="Minimum 2 independent raters"):
+        compile_multi_expert_consensus([plan_single])
+
+    # Empty expert plans list in candidate coverage must evaluate to coverage_fraction=0.0 (not 1.0)
+    empty_cov = evaluate_expert_candidate_coverage([], [])
+    assert empty_cov.coverage_fraction == 0.0
+    assert empty_cov.total_expert_strategies == 0
 
 
 def test_challenge_case_registry_retrieval():

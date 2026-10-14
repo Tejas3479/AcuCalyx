@@ -2469,16 +2469,20 @@
       // 4. Section 3: Keyframe CT Previews & Calculus Burden Profile
       const axialImg = document.getElementById('card-axial-img');
       const coronalImg = document.getElementById('card-coronal-img');
-      axialImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=AXIAL&slice_index=40&window_width=400&window_level=40`;
-      coronalImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=CORONAL&slice_index=48&window_width=400&window_level=40`;
+      const axialSlice = (typeof mprViewer !== 'undefined' && mprViewer) ? mprViewer.currentSliceIndex : 40;
+      const coronalSlice = (typeof mprViewer !== 'undefined' && mprViewer?.maxSlices?.CORONAL) ? Math.floor(mprViewer.maxSlices.CORONAL / 2) : 48;
+      const ww = (typeof mprViewer !== 'undefined' && mprViewer) ? mprViewer.windowWidth : 400;
+      const wl = (typeof mprViewer !== 'undefined' && mprViewer) ? mprViewer.windowLevel : 40;
+      axialImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=AXIAL&slice_index=${axialSlice}&window_width=${ww}&window_level=${wl}`;
+      coronalImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=CORONAL&slice_index=${coronalSlice}&window_width=${ww}&window_level=${wl}`;
 
       document.getElementById('card-stone-volume').textContent = document.getElementById('info-stone-vol')?.textContent || '-- mm³';
       document.getElementById('card-stone-feret').textContent = document.getElementById('info-stone-feret')?.textContent || '-- mm';
       document.getElementById('card-stone-hu').textContent = document.getElementById('info-stone-hu')?.textContent || '-- HU';
-      document.getElementById('card-guys-grade').textContent = document.getElementById('info-guys-grade')?.textContent || 'GRADE I';
+      document.getElementById('card-guys-grade').textContent = document.getElementById('info-guys-grade')?.textContent || '--';
 
-      document.getElementById('card-carm-be').textContent = document.getElementById('vp-be-angles')?.textContent || 'LAO 18° CAUD 12°';
-      document.getElementById('card-carm-dv').textContent = document.getElementById('vp-dv-angles')?.textContent || 'RAO 12° CAUD 12°';
+      document.getElementById('card-carm-be').textContent = document.getElementById('vp-be-angles')?.textContent || '--';
+      document.getElementById('card-carm-dv').textContent = document.getElementById('vp-dv-angles')?.textContent || '--';
     }
 
     function printSummaryCard() {

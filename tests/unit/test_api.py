@@ -313,6 +313,35 @@ def test_patient_case_fails_closed_without_neural_weights(tmp_path):
     }
     save_case_meta(case_id, meta)
 
+    # Pre-check 1: Prior to laterality confirmation, clinical planning is blocked by Interlock U1 (HTTP 412)
+    res_unconfirmed = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "left"}
+    )
+    assert res_unconfirmed.status_code == 412
+    assert "Interlock U1 Laterality Verification Gate" in res_unconfirmed.json()["detail"]
+
+    # Clinician confirms laterality via authoritative usability endpoint
+    res_confirm = client.post(
+        f"/api/usability/cases/{case_id}/laterality-confirm",
+        json={
+            "clinician_selected_side": "LEFT",
+            "ct_metadata_side": "LEFT",
+            "landmark_checks": {"axial_scout": True, "liver_spleen_verified": True},
+            "is_two_step_confirmed": True
+        }
+    )
+    assert res_confirm.status_code == 200
+    assert res_confirm.json()["verified"] is True
+
+    # Pre-check 2: Attempt with mismatched side -> HTTP 400
+    res_mismatch = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "right"}
+    )
+    assert res_mismatch.status_code == 400
+    assert "Laterality Mismatch" in res_mismatch.json()["detail"]
+
     # Attempt 1: Explicit request for heuristic demo anatomy on patient case -> HTTP 400
     res_heuristic = client.post(
         f"/api/cases/{case_id}/plan",
@@ -334,6 +363,47 @@ def test_patient_case_fails_closed_without_neural_weights(tmp_path):
     # Confirm case state transitioned to REJECTED
     st_res = client.get(f"/api/cases/{case_id}/status")
     assert st_res.json()["state"] == "REJECTED"
+
+
+def test_upload_security_and_traversal_guards():
+    """
+    Verifies that the upload endpoint and case store strictly reject path traversal,
+    enforce file size limits, and prevent Zip Slip exploits.
+    """
+    import io
+    import zipfile
+    from app.api.case_store import load_case_meta
+
+    # 1. Invalid case_id with path traversal characters must fail
+    res_trav = client.get("/api/cases/..%2F..%2Fetc/status")
+    assert res_trav.status_code in (400, 404)
+
+    # 2. Upload with path traversal in filename must sanitize safe_filename
+    file_content = b"Mock CT DICOM raw bytes"
+    res_upload = client.post(
+        "/api/cases/upload",
+        files={"file": ("../../malicious.nii.gz", io.BytesIO(file_content), "application/gzip")}
+    )
+    assert res_upload.status_code == 200
+    up_data = res_upload.json()
+    assert "malicious" in up_data["case_id"]
+    assert ".." not in up_data["case_id"]
+    up_meta = load_case_meta(up_data["case_id"])
+    assert "malicious.nii.gz" in up_meta["input_path"]
+    assert ".." not in up_meta["input_path"]
+
+    # 3. Zip file with zip-slip path traversal entry must be rejected with HTTP 400
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("../../evil_escape.txt", b"evil payload")
+    zip_buffer.seek(0)
+
+    res_zip_slip = client.post(
+        "/api/cases/upload",
+        files={"file": ("slip.zip", zip_buffer, "application/zip")}
+    )
+    assert res_zip_slip.status_code == 400
+    assert "Illegal path in archive" in res_zip_slip.json()["detail"]
 
 
 def test_frontend_workbench_and_summary_card_assets():

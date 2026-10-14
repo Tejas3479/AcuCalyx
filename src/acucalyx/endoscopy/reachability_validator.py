@@ -434,6 +434,11 @@ def evaluate_m15_validation_gate(
 
                     # Check for placeholder hashes and verify on-disk artifacts
                     hash_keys = ["ct_volume_sha256", "staple_consensus_sha256", "vmtk_centerline_sha256"]
+                    f_key_map = {
+                        "ct_volume_sha256": "ct_volume_nifti",
+                        "staple_consensus_sha256": "staple_consensus_mask",
+                        "vmtk_centerline_sha256": "vmtk_centerline_vtp"
+                    }
                     for h_key in hash_keys:
                         if h_key in case:
                             h_val = str(case[h_key]).strip()
@@ -445,24 +450,30 @@ def evaluate_m15_validation_gate(
                                     validation_timestamp=datetime.now(timezone.utc).isoformat(),
                                     summary_findings=f"Evaluation blocked: case '{cid_str}' contains placeholder/empty SHA-256 digest for '{h_key}'.",
                                 )
-                            # Check file on disk if corresponding file path is specified
-                            f_key = h_key.replace("_sha256", "_nifti") if "nifti" in h_key else h_key.replace("_sha256", "_mask") if "mask" in h_key else h_key.replace("_sha256", "_vtp")
+                            f_key = f_key_map.get(h_key, h_key.replace("_sha256", "_path"))
                             if f_key in case:
                                 p_disk = Path(case[f_key])
                                 if not p_disk.is_absolute():
                                     p_disk = (m_path.parent / p_disk).resolve()
-                                if p_disk.is_file():
-                                    import hashlib
-                                    with open(p_disk, "rb") as bf:
-                                        computed_h = hashlib.sha256(bf.read()).hexdigest()
-                                    if computed_h.lower() != h_val.lower():
-                                        return M15ValidationGateReport(
-                                            gate_identifier="ACU-M15-V-GATE-2026",
-                                            status="NOT_EVALUABLE",
-                                            overall_gate_passed=False,
-                                            validation_timestamp=datetime.now(timezone.utc).isoformat(),
-                                            summary_findings=f"Evaluation blocked: SHA-256 mismatch for artifact '{p_disk.name}' in case '{cid_str}'. Manifest: {h_val}, Computed: {computed_h}.",
-                                        )
+                                if not p_disk.is_file():
+                                    return M15ValidationGateReport(
+                                        gate_identifier="ACU-M15-V-GATE-2026",
+                                        status="NOT_EVALUABLE",
+                                        overall_gate_passed=False,
+                                        validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                                        summary_findings=f"Evaluation blocked: declared artifact file missing on disk: '{p_disk}' for case '{cid_str}'.",
+                                    )
+                                import hashlib
+                                with open(p_disk, "rb") as bf:
+                                    computed_h = hashlib.sha256(bf.read()).hexdigest()
+                                if computed_h.lower() != h_val.lower():
+                                    return M15ValidationGateReport(
+                                        gate_identifier="ACU-M15-V-GATE-2026",
+                                        status="NOT_EVALUABLE",
+                                        overall_gate_passed=False,
+                                        validation_timestamp=datetime.now(timezone.utc).isoformat(),
+                                        summary_findings=f"Evaluation blocked: SHA-256 mismatch for artifact '{p_disk.name}' in case '{cid_str}'. Manifest: {h_val}, Computed: {computed_h}.",
+                                    )
 
                     # Extract morphometry ground truth and predictions
                     gt = case.get("morphometry_ground_truth", {})
