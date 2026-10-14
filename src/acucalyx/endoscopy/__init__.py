@@ -57,6 +57,18 @@ from acucalyx.endoscopy.reachability_validator import (
     M15ValidationGateReport,
     evaluate_m15_validation_gate,
 )
+from acucalyx.endoscopy.multi_reader_pilot import (
+    CTUOpacificationQuality,
+    ReaderAnnotation,
+    CalyxDisagreementMetric,
+    MultiReaderConsensusResult,
+    CTUPilotCase,
+    PilotCaseFeasibilityEvaluation,
+    Phase0FeasibilityReport,
+    MultiReaderConsensusAnalyzer,
+    Phase0FeasibilityBenchmark,
+    generate_synthetic_ctu_pilot_cohort,
+)
 
 __all__ = [
     "EndoscopeClass",
@@ -98,4 +110,14 @@ __all__ = [
     "PhysicalPhantomConcordanceResult",
     "M15ValidationGateReport",
     "evaluate_m15_validation_gate",
+    "CTUOpacificationQuality",
+    "ReaderAnnotation",
+    "CalyxDisagreementMetric",
+    "MultiReaderConsensusResult",
+    "CTUPilotCase",
+    "PilotCaseFeasibilityEvaluation",
+    "Phase0FeasibilityReport",
+    "MultiReaderConsensusAnalyzer",
+    "Phase0FeasibilityBenchmark",
+    "generate_synthetic_ctu_pilot_cohort",
 ]
