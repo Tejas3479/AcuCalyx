@@ -810,7 +810,10 @@ def run_planning_pipeline(
         pcs_visibility=pcs_result,
         stones=stone_morphs,
         attenuations=stone_attens,
-        candidates=top_candidates
+        candidates=top_candidates,
+        verified_laterality=side.upper(),
+        volume_hu=volume_hu,
+        spatial=spatial
     )
 
     # -------------------------------------------------------------

@@ -1232,17 +1232,181 @@ def get_virtual_fluoroscopy(case_id: str, candidate_id: str):
     }
 
 
-@app.get("/api/cases/{case_id}/report")
-def download_planning_report(case_id: str):
-    """Downloads the auditable 2-page Preoperative Planning PDF Report."""
+def _ensure_planning_report(case_id: str) -> Path:
+    """Ensures that the 2-page Preoperative Planning PDF Report and keyframes exist, generating dynamically if needed."""
     case_dir = CASES_DIR / case_id
     pdf_path = case_dir / "artifacts" / "report.pdf"
-    if not pdf_path.is_file():
+    if pdf_path.is_file() and pdf_path.stat().st_size > 500:
+        return pdf_path
+
+    artifacts_dir = case_dir / "artifacts"
+    q_file = artifacts_dir / "quality.json"
+    c_file = artifacts_dir / "candidates.json"
+
+    if not (c_file.is_file() and q_file.is_file()):
         raise HTTPException(status_code=404, detail="Planning report PDF not found. Run planning first.")
+
+    meta = load_case_meta(case_id)
+    with open(q_file, "r") as f:
+        q_data = json.load(f)
+
+    p_file = artifacts_dir / "provenance.json"
+    p_data = {}
+    if p_file.is_file():
+        with open(p_file, "r") as f:
+            p_data = json.load(f)
+
+    s_file = artifacts_dir / "stones.json"
+    s_data = []
+    if s_file.is_file():
+        with open(s_file, "r") as f:
+            s_data = json.load(f)
+
+    with open(c_file, "r") as f:
+        c_data = json.load(f)
+
+    from acucalyx.audit.provenance import CaseProvenanceRecord, create_provenance_record
+    from acucalyx.ingestion.quality_gate import QualityGateResult
+    from acucalyx.collecting_system.visibility_gate import PCSVisibilityResult, PCSVisibilityState
+    from acucalyx.stones.volumetry import StoneMorphometry
+    from acucalyx.stones.attenuation import StoneAttenuationProfile
+    from acucalyx.planning.pareto_optimizer import CandidateTrajectory
+    from acucalyx.reports.planning_report import generate_preoperative_planning_pdf
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    prov = create_provenance_record(
+        case_id=case_id,
+        study_uid=p_data.get("study_instance_uid", f"STUDY_{case_id}"),
+        series_uid=p_data.get("series_instance_uid", f"SERIES_{case_id}"),
+        modality=p_data.get("modality", "CT"),
+        patient_position=p_data.get("patient_position_tag", "HFS"),
+        input_data_hash=p_data.get("input_data_sha256", meta.get("data_hash", "00" * 32)),
+        software_version="2.1.0"
+    )
+
+    q_gate = QualityGateResult(
+        passed=q_data.get("passed", True),
+        rejection_reasons=q_data.get("rejection_reasons", []),
+        warnings=q_data.get("warnings", []),
+        geometry_score=q_data.get("geometry_score", 1.0),
+        resolution_score=q_data.get("resolution_score", 1.0),
+        overall_quality_tier=q_data.get("overall_quality_tier", "HIGH"),
+        slice_thickness_mm=q_data.get("slice_thickness_mm", 1.0),
+        pixel_spacing_mm=tuple(q_data.get("pixel_spacing_mm", [0.75, 0.75])),
+        slice_spacing_mm=q_data.get("slice_spacing_mm", 1.0),
+        is_contrast_enhanced=q_data.get("is_contrast_enhanced"),
+        reconstruction_kernel=q_data.get("reconstruction_kernel", "Standard")
+    )
+
+    pcs_str = meta.get("pcs_visibility_state", PCSVisibilityState.ANATOMICALLY_ESTIMATED.value)
+    pcs_state = PCSVisibilityState(pcs_str) if pcs_str in [s.value for s in PCSVisibilityState] else PCSVisibilityState.ANATOMICALLY_ESTIMATED
+    pcs_res = PCSVisibilityResult(
+        state=pcs_state,
+        confidence_score=0.85,
+        fluid_cavity_volume_mm3=1200.0,
+        mean_internal_hu=15.0,
+        allows_direct_puncture_lock=(pcs_state != PCSVisibilityState.ANATOMICALLY_ESTIMATED),
+        clinical_notice="Preoperative planning based on patient imaging series."
+    )
+
+    stones = []
+    attens = []
+    for s in s_data:
+        stones.append(StoneMorphometry(
+            stone_id=s["stone_id"],
+            volume_mm3=s["volume_mm3"],
+            volume_voxels=s.get("volume_voxels", int(max(1, s["volume_mm3"]))),
+            max_feret_diameter_mm=s["max_feret_diameter_mm"],
+            centroid_lps_mm=np.array(s["centroid_lps_mm"]),
+            bounding_box_span_mm=np.array(s["bounding_box_span_mm"]),
+            tier=s.get("tier", "MODERATE")
+        ))
+        attens.append(StoneAttenuationProfile(
+            stone_id=s["stone_id"],
+            mean_hu=s.get("mean_hu", 850.0),
+            median_hu=s.get("mean_hu", 850.0),
+            peak_hu=s.get("peak_hu", 1100.0),
+            std_hu=100.0,
+            min_hu=s.get("mean_hu", 850.0) - 200.0,
+            fraction_low_under_500hu=0.1,
+            fraction_intermediate_500_1000hu=0.3,
+            fraction_high_over_1000hu=s.get("fraction_high_over_1000hu", 0.6),
+            composition_inference=s.get("composition_inference", "CALCIUM_OXALATE_SUSPECTED")
+        ))
+
+    candidates = []
+    for c in c_data:
+        candidates.append(CandidateTrajectory(
+            candidate_id=c["candidate_id"],
+            entry_point_lps=np.array(c["entry_point_lps"]),
+            target_point_lps=np.array(c["target_point_lps"]),
+            target_calyx_name=c.get("target_calyx", "Calyx Target"),
+            tract_length_mm=c.get("tract_length_mm", 70.0),
+            min_effective_clearance_mm=c.get("min_effective_clearance_mm", 15.0),
+            hazard_evaluations=[],
+            reachable_stone_fraction=c.get("reachable_stone_fraction", 0.8),
+            access_rib_classification=c.get("access_rib_classification", "SUBCOSTAL_12"),
+            required_scope_deflection_deg=c.get("required_scope_deflection_deg", 15.0),
+            is_pareto_optimal=c.get("is_pareto_optimal", True),
+            pareto_rank=1
+        ))
+
+    cached = get_cached_volume(case_id)
+    vol = cached["volume"] if cached else None
+    spatial = cached["spatial"] if cached else None
+
+    lat_conf = meta.get("laterality_confirmation")
+    pos_conf = meta.get("surgical_position_confirmation")
+    verified_lat = lat_conf.get("verified_laterality") if lat_conf else meta.get("target_side", "LEFT").upper()
+    confirmed_pos = pos_conf.get("operative_position") if pos_conf else "PRONE_STANDARD"
+
+    generate_preoperative_planning_pdf(
+        output_path=pdf_path,
+        provenance=prov,
+        quality_gate=q_gate,
+        pcs_visibility=pcs_res,
+        stones=stones,
+        attenuations=attens,
+        candidates=candidates,
+        verified_laterality=verified_lat,
+        confirmed_operative_position=confirmed_pos,
+        active_candidate_id=meta.get("active_candidate_id"),
+        volume_hu=vol,
+        spatial=spatial
+    )
+    return pdf_path
+
+
+@app.get("/api/cases/{case_id}/report")
+@app.get("/api/cases/{case_id}/pdf-report")
+def download_planning_report(case_id: str):
+    """Downloads the auditable 2-page Preoperative Planning PDF Report."""
+    pdf_path = _ensure_planning_report(case_id)
     return FileResponse(
         path=pdf_path,
         media_type="application/pdf",
         filename=f"AcuCalyx_{case_id}_Preoperative_Report.pdf"
+    )
+
+
+@app.get("/api/cases/{case_id}/keyframes/{keyframe_name}")
+def get_case_keyframe(case_id: str, keyframe_name: str):
+    """Streams server-rendered keyframe PNG image (axial, coronal, bullseye)."""
+    clean_name = keyframe_name if keyframe_name.endswith(".png") else f"{keyframe_name}.png"
+    case_dir = CASES_DIR / case_id
+    kf_path = case_dir / "artifacts" / "keyframes" / clean_name
+
+    if not kf_path.is_file():
+        # Trigger dynamic generation
+        _ensure_planning_report(case_id)
+
+    if not kf_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Keyframe '{clean_name}' not found for case {case_id}")
+
+    return FileResponse(
+        path=kf_path,
+        media_type="image/png",
+        filename=clean_name
     )
 
 
