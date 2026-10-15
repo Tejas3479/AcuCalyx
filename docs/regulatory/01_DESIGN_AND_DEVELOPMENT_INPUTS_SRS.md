@@ -12,6 +12,18 @@
 
 This document defines the formal Design and Development Inputs (System Requirements) for **AcuCalyx™ Core**. In strict conformance with ISO 13485:2016 Clause 7.3.3 and the 2026 FDA QMSR framework, **every numeric specification is justified by documented clinical rationale, metrological data, or risk analysis linkage**. No arbitrary numbers are admitted.
 
+### 1.1 Device Classification & Intended Regulatory Footprint
+- **Classification Regulation:** 21 CFR 892.2050 (Medical Image Processing and Communication System)
+- **FDA Product Codes:** `LLZ` (System, Image Processing, Radiological) & `QIH` (Automated Radiological Image Processing Software)
+- **Device Class:** Class II (Special Controls)
+- **Target Submission:** 510(k) Premarket Notification (or De Novo Classification under FD&C Act §513(f)(2))
+- **Product Architecture:** Software as a Medical Device (SaMD) Preoperative Planning & Rehearsal Workbench
+
+### 1.2 Absolute Product Boundaries & Clinician Authority
+1. **Preoperative SaMD Workbench Scope:** AcuCalyx™ Core operates strictly in the preoperative planning, simulation, and virtual fluoroscopy rehearsal domain. It processes diagnostic abdominopelvic CT scans to compute candidate needle access corridors, calculate simulated C-arm gantry projection angles, and render virtual fluoroscopic views.
+2. **Exclusion of Hardware Control & Active Guidance:** AcuCalyx™ Core does **not** connect to active intraoperative optical/electromagnetic tracking sensors, does **not** perform dynamic intraoperative needle steering, does **not** command robotic arm actuators, and does **not** actuate medical hardware. All dynamic tracking and robotic actuation capabilities are explicitly partitioned out of scope.
+3. **Clinical Decision Support (CDS) & Fail-Closed Principle:** AcuCalyx operates strictly as informational decision support. Attending surgeons retain 100% clinical authority over patient positioning, target selection, and needle puncture. Under ambiguous anatomy or failing safety criteria, the software fails closed with an explicit "No Feasible Trajectory" rather than presenting a compromised corridor.
+
 ---
 
 ## 2. Quantitative System Requirements & Provenance Register

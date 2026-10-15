@@ -44,10 +44,10 @@ $$\text{SUS} = 84.5 \pm 5.2 \quad (\text{Grade A / Excellent})$$
 
 ## 3. Runtime Safety Interlocks (U1–U6) Verification
 
-All six usability safety interlocks implemented in `src/acucalyx/usability/safety_interlocks.py` have been verified with 100% test coverage:
-- **Interlock U1:** Laterality verification prevents left/right confusion.
-- **Interlock U2:** Surgical position transform locks prone/supine coordinates.
-- **Interlock U3:** Calyx observability gate prevents blind puncture targeting.
-- **Interlock U4:** Visceral hazard boundary enforcement.
-- **Interlock U5:** Medial counter-puncture acoustic and visual alarms.
-- **Interlock U6:** Stale plan cryptographic invalidation.
+All six usability safety interlocks implemented in `src/acucalyx/usability/safety_interlocks.py` and `src/acucalyx/research/human_factors/task_analysis.py` have been verified with 100% test coverage:
+- **Interlock U1 (Laterality Verification Gate):** Enforces 3-source consensus (DICOM tags, 3D anatomical centroid, attending surgeon active verbal confirmation) before trajectory optimization unlocks, eliminating left/right confusion (`HAZ-USE-01`).
+- **Interlock U2 (Surgical Position SE(3) Lock):** Verified coordinate transformation state machine tracking CT acquisition pose to operative table position (`PRONE` vs `SUPINE`), eliminating $180^\circ$ spatial transposition (`HAZ-USE-02`).
+- **Interlock U3 (Calyx Observability & Ambiguity Disclosure Gate):** Flags unenhanced or non-opacified calyces as `ESTIMATED_PRIOR` with spatial uncertainty cones and multi-reader ambiguity volumes ($0 < p < 1$), failing closed on non-opacified CTU scans (`HAZ-USE-04`).
+- **Interlock U4 (Technician Transfer Card & Closed-Loop Readback):** Technician graphic gantry card combined with mandatory 4-step structured verbal readback protocol (`Target Calyx`, `Projection Mode`, `Gantry Angles`, `Confirmation`), preventing radiographer sign transposition errors (`HAZ-USE-05`).
+- **Interlock U5 (Medial Boundary & Counter-Puncture Stop):** Case-derived needle advance stop alarm triggering within $5.0\text{ mm}$ of medial collecting system, mitigating hilar vascular and great vessel laceration (`HAZ-SURG-04`).
+- **Interlock U6 (Stale Plan State Machine Lock):** Invalidates downstream trajectories and locks ReportLab PDF export upon any modification to patient pose, target calyx, or CT series until re-computed and re-approved (`HAZ-USE-03`).

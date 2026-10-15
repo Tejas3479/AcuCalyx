@@ -237,6 +237,14 @@ class RegulatoryEvidenceCatalog:
                 governing_standard="IEC 62366-1:2015+AMD1:2020 / FDA Aug 2026",
                 estar_section_mapping="eSTAR Section 10.0 (Human Factors)",
             ),
+            EvidenceItem(
+                reference_id="DOC-REG-16",
+                category=EvidenceCategory.ADMINISTRATIVE,
+                title="FDA Pre-Submission (Q-Submission) Briefing Package",
+                relative_path="docs/regulatory/16_FDA_PRE_SUBMISSION_Q_SUB_BRIEFING_PACKAGE.md",
+                governing_standard="FDA Q-Submission Program Guidance (Jan 2026)",
+                estar_section_mapping="eSTAR Section 1.0 (Q-Submission Attachment)",
+            ),
         ]
         for item in defaults:
             self.register_item(item)

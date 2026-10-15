@@ -12,6 +12,13 @@
 
 This Software Requirements Specification (SwRS) establishes the detailed functional, algorithmic, safety, cybersecurity, and performance requirements for **AcuCalyx™ Core**.
 
+### 1.1 SaMD Workbench Scope & Regulatory Classification
+- **Classification Regulation:** 21 CFR 892.2050 (Medical Image Processing and Communication System)
+- **Product Codes:** `LLZ` (System, Image Processing, Radiological) / `QIH` (Automated Radiological Image Processing Software)
+- **Device Class:** Class II (Special Controls)
+- **Operational Domain:** Preoperative planning and virtual fluoroscopic rehearsal workbench. The software processes standard diagnostic axial CT DICOM series, extracts 3D segmentations, computes Pareto-optimal access corridors, and simulates 2D C-arm projection images (DRRs).
+- **Explicit Invariant:** All requirements in this specification pertain strictly to standalone, non-invasive preoperative decision support software. No active intraoperative needle tracking, sensor fusion, robotic hardware control, or physical actuator guidance is implemented or permitted within this build.
+
 In accordance with IEC 62304 Clause 5.2, each software requirement defines:
 - Detailed functional and algorithmic behavior
 - Exact input data types, valid ranges, and validation constraints

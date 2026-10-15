@@ -323,3 +323,47 @@ def test_design_release_authorization_gate_execution():
     failed_vv_decision = evaluator.evaluate_release(simulated_vv_pass_rate=0.98)
     assert failed_vv_decision.is_authorized is False
     assert any("DIM3_FAILURE" in r for r in failed_vv_decision.blocking_reasons)
+
+
+def test_qsub_briefing_package_and_interlocks_traceability():
+    """Verify Milestone Horizon 4: FDA Pre-Submission (Q-Sub) briefing package completeness and ISO 14971 interlock tracing."""
+    catalog = RegulatoryEvidenceCatalog()
+    item = catalog.get_item("DOC-REG-16")
+    assert item is not None
+    assert item.category == EvidenceCategory.ADMINISTRATIVE
+    assert "16_FDA_PRE_SUBMISSION_Q_SUB_BRIEFING_PACKAGE.md" in item.relative_path
+
+    # Verify physical file existence and key sections
+    qsub_path = Path(item.relative_path)
+    assert qsub_path.exists(), f"Q-Sub briefing file missing at {qsub_path}"
+    content = qsub_path.read_text(encoding="utf-8")
+
+    # Verify 21 CFR 892.2050 and LLZ/QIH classification
+    assert "21 CFR 892.2050" in content
+    assert "LLZ" in content
+    assert "QIH" in content
+
+    # Verify Workbench boundary invariants
+    assert "AcuCalyx Core" in content
+    assert "AcuCalyx Nav" in content
+    assert "Preoperative" in content
+
+    # Verify all 7 specific FDA review questions are articulated
+    for q_num in range(1, 8):
+        assert f"Question {q_num}:" in content, f"Q-Sub missing Question {q_num}"
+
+    # Verify M15-V benchmark data citation
+    assert "95.8%" in content  # Sensitivity
+    assert "0.12 mm" in content  # Centerline MAE
+    assert "0.88 mm" in content  # H95
+    assert "GO_FEASIBILITY_PASSED" in content
+
+    # Verify ISO 14971 RMF traces Interlocks U1-U4
+    rmf_path = Path("docs/regulatory/03_ISO_14971_RISK_MANAGEMENT_FILE.md")
+    assert rmf_path.exists()
+    rmf_content = rmf_path.read_text(encoding="utf-8")
+    assert "Interlock U1" in rmf_content
+    assert "Interlock U2" in rmf_content
+    assert "Interlock U3" in rmf_content
+    assert "Interlock U4" in rmf_content
+

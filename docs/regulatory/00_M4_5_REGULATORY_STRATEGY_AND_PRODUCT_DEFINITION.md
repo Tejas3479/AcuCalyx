@@ -71,7 +71,7 @@ AcuCalyx is architecturally partitioned into two strictly decoupled systems:
 
 ### 4.1 Primary Regulatory Pathway: 510(k) Premarket Notification
 - **Statutory Classification:** 21 CFR 892.2050
-- **Product Code:** `LLZ` (System, Image Processing, Radiological)
+- **Product Codes:** `LLZ` (System, Image Processing, Radiological) / `QIH` (Automated Radiological Image Processing Software)
 - **Device Class:** Class II (Performance Standards)
 - **Review Panel:** Radiology
 
