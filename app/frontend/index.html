@@ -156,6 +156,10 @@
             <div class="info-label">Quality Gate</div>
             <div id="info-quality-status" class="info-val" style="color: var(--accent-teal);">PASSED</div>
           </div>
+          <div class="info-item">
+            <div class="info-label">Surgical Pose</div>
+            <div id="info-surgical-pose" class="info-val" style="color: #a78bfa;">PRONE (U2 PENDING)</div>
+          </div>
         </div>
       </div>
 
@@ -454,6 +458,12 @@
         </button>
         <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
           🛡️ Laterality Multi-Evidence Gate (U1)
+        </button>
+        <button id="btn-open-position-confirm" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #8b5cf6; color: #8b5cf6; font-weight: 600;">
+          🔄 Patient Pose & Alignment Gate (U2)
+        </button>
+        <button id="btn-open-endoscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #ec4899; color: #ec4899; font-weight: 700;">
+          🔬 Flexible Endoscopy & Reachability (M15)
         </button>
         <button id="btn-approve-trajectory" class="btn btn-success" style="width: 100%; justify-content: center; margin-bottom: 8px;">
           ✓ Approve Selected Trajectory
@@ -1010,6 +1020,17 @@
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Dynamic Certified Bench Phantoms Catalog (Milestones M14 & M15) -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan);">Certified Physical Bench Phantoms & Ground-Truth Datasets</span>
+            <span class="version-pill" style="background: rgba(0, 210, 255, 0.15); color: var(--accent-cyan);">ISO/IEC 17025 BENCH</span>
+          </div>
+          <div id="phantom-catalog-container" style="font-size: 11px; color: var(--text-secondary);">
+            Loading certified silicone & ultrasound phantom registry...
+          </div>
         </div>
       </div>
       <div class="modal-footer">
@@ -1749,6 +1770,294 @@
     </div>
   </div>
 
+  <!-- Interlock U2: Surgical Patient Position & Orientation Gate Modal (IEC 62366-1 / ISO 14971) -->
+  <div id="modal-position-confirm" class="modal-overlay" style="display: none; z-index: 1065;">
+    <div class="modal-content" style="width: 640px; max-width: 95vw;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="font-size: 15px; font-weight: 700; color: #a78bfa;">🔄 Interlock U2: Patient Operative Pose & Alignment Gate</span>
+          <span class="version-pill" style="background: rgba(139, 92, 246, 0.2); color: #c4b5fd;">IEC 62366-1 / TASK C2</span>
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-position-confirm').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: rgba(139, 92, 246, 0.1); border: 1px solid #8b5cf6; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+          <div style="font-weight: 700; color: #c4b5fd; font-size: 12px; margin-bottom: 4px;">CRITICAL SPATIAL SAFETY INTERLOCK (ISO 14971 Risk Control U2)</div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">
+            Prevents coordinate frame inversion and C-arm gantry angle transposition errors (LAO/RAO or Cranial/Caudal swaps). Verifies the rigid SE(3) transformation between the diagnostic CT acquisition frame and the operative table orientation.
+          </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px;">
+          <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">CT Acquisition Tag (DICOM)</div>
+            <div id="pos-ct-tag-display" style="font-size: 14px; font-weight: 700; color: var(--accent-cyan); margin-top: 4px;">HFS (Head First Supine)</div>
+          </div>
+          <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Active Case ID</div>
+            <div id="pos-case-id-display" style="font-size: 13px; font-weight: 600; font-family: monospace; margin-top: 4px;">--</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 14px;">
+          <label style="display: block; font-size: 11px; font-weight: 700; margin-bottom: 6px;">Planned Operative Surgical Pose:</label>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <label style="background: #0b0e14; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="surgical-pose-opt" value="PRONE_STANDARD" checked onchange="updatePoseTransformPreview('PRONE_STANDARD')">
+              <div>
+                <strong>Prone Standard</strong>
+                <div style="font-size: 10px; color: var(--text-secondary);">Chest & pelvic bolsters</div>
+              </div>
+            </label>
+            <label style="background: #0b0e14; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="surgical-pose-opt" value="PRONE_SPLIT_LEG" onchange="updatePoseTransformPreview('PRONE_SPLIT_LEG')">
+              <div>
+                <strong>Prone Split-Leg (ECIRS)</strong>
+                <div style="font-size: 10px; color: var(--text-secondary);">Endoscopic combined access</div>
+              </div>
+            </label>
+            <label style="background: #0b0e14; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="surgical-pose-opt" value="FLANK_LATERAL" onchange="updatePoseTransformPreview('FLANK_LATERAL')">
+              <div>
+                <strong>Flank Lateral</strong>
+                <div style="font-size: 10px; color: var(--text-secondary);">90° oblique flank position</div>
+              </div>
+            </label>
+            <label style="background: #0b0e14; border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; font-size: 12px; display: flex; align-items: center; gap: 8px; cursor: pointer;">
+              <input type="radio" name="surgical-pose-opt" value="SUPINE_VALDIVIA" onchange="updatePoseTransformPreview('SUPINE_VALDIVIA')">
+              <div>
+                <strong>Supine Valdivia</strong>
+                <div style="font-size: 10px; color: var(--text-secondary);">Galdakao-modified supine</div>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <!-- SE(3) Transform Mathematical Invariant Card -->
+        <div id="pose-transform-card" style="background: #080c14; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; color: #a78bfa; margin-bottom: 4px;">SE(3) RIGID TRANSFORMATION MATRIX T(CT → OR)</div>
+          <div id="pose-transform-desc" style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; font-family: monospace;">
+            CT Supine (HFS) → Prone Operative Setup: Inverts Left-Right (X) and Anterior-Posterior (Y) axes: diag(-1, -1, 1, 1). AcuCalyx automatically applies this rigid transformation to all C-arm gantry projections and needle entry vectors.
+          </div>
+        </div>
+
+        <div style="background: var(--bg-surface-elevated); padding: 10px; border-radius: 6px; border: 1px solid var(--border-color); margin-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 700; margin-bottom: 6px;">Pre-Rehearsal Surgical Check Items:</div>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 6px; cursor: pointer;">
+            <input type="checkbox" id="check-pos-table" checked>
+            <span>Patient torso & flank aligned with radiolucent carbon fiber table zone.</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; margin-bottom: 6px; cursor: pointer;">
+            <input type="checkbox" id="check-pos-carm" checked>
+            <span>C-Arm 30° oblique gantry sweep collision clearance verified with OR staff.</span>
+          </label>
+          <label style="display: flex; align-items: center; gap: 8px; font-size: 11px; cursor: pointer;">
+            <input type="checkbox" id="check-pos-twostep" checked>
+            <span><strong>Clinician Signature:</strong> I authorize this operative position for virtual fluoroscopy & ultrasound planning.</span>
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; color: var(--text-secondary);">ISO 14971 Risk Mitigation U2</span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn" onclick="document.getElementById('modal-position-confirm').style.display='none'">Cancel</button>
+          <button id="btn-submit-position-confirm" class="btn btn-primary" style="background: #8b5cf6; border-color: #8b5cf6;" onclick="submitPositionConfirmation()">
+            ✓ Authorize & Lock Operative Pose (U2)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Milestone M15: Flexible Endoscopic Reachability & Stone Clearance Cockpit Modal -->
+  <div id="modal-endoscopy" class="modal-overlay" style="display: none; z-index: 1060;">
+    <div class="modal-content" style="width: 1100px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #ec4899;">🔬 Flexible Endoscopic Reachability & Stone Clearance (Milestone M15)</span>
+          <span class="version-pill" style="background: rgba(236, 72, 153, 0.15); color: #f472b6; font-weight: 600;">ACTIVE PCNL SHEATH</span>
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-endoscopy').style.display='none'">✕</button>
+      </div>
+
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;">
+        <!-- Top Configuration Toolbar -->
+        <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: grid; grid-template-columns: 1.5fr 1.5fr 1fr auto; gap: 12px; align-items: center;">
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Certified Endoscope Profile:</label>
+            <select id="endo-instrument-select" class="case-select" style="width: 100%; font-size: 11.5px;" onchange="loadEndoscopyData()">
+              <option value="OLYMPUS_URF_V3">Olympus URF-V3 (8.4 Fr / 275° Deflection)</option>
+              <option value="STORZ_FLEX_XC">Karl Storz Flex-XC (8.5 Fr / 270° Deflection)</option>
+              <option value="BOSTON_LITHOVUE">Boston Scientific LithoVue (9.5 Fr Single-Use)</option>
+              <option value="WOLF_VIPER">Richard Wolf Viper (6.0 Fr Ultra-Slim)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Working Channel Instrument:</label>
+            <select id="endo-tool-select" class="case-select" style="width: 100%; font-size: 11.5px;" onchange="loadEndoscopyData()">
+              <option value="LASER_FIBER_200UM">Holmium/TFL Laser Fiber (200 µm) [-10° Deflection loss]</option>
+              <option value="LASER_FIBER_365UM">Holmium Laser Fiber (365 µm) [-28° Deflection loss]</option>
+              <option value="BASKET_1_9FR">Tipless Nitinol Basket (1.9 Fr) [-15° Deflection loss]</option>
+              <option value="UNLOADED">Unloaded Channel (Full 275° Deflection)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Puncture Tract:</label>
+            <div id="endo-tract-display" style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); padding: 4px 0;">CAND_01 (Posterior Lower Pole)</div>
+          </div>
+          <div>
+            <button class="btn btn-primary" style="background: #ec4899; border-color: #ec4899; margin-top: 14px;" onclick="loadEndoscopyData()">
+              ⚡ Recalculate
+            </button>
+          </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div style="display: flex; gap: 6px; border-bottom: 1px solid var(--border-color); margin-bottom: 14px;">
+          <button class="tab-btn active" id="tab-endo-btn-reach" onclick="switchEndoTab('reach')">🎯 Calyceal Reachability</button>
+          <button class="tab-btn" id="tab-endo-btn-stone" onclick="switchEndoTab('stone')">💎 Stone Coverage (f_geom)</button>
+          <button class="tab-btn" id="tab-endo-btn-caliber" onclick="switchEndoTab('caliber')">📏 Access Caliber & Sizing</button>
+          <button class="tab-btn" id="tab-endo-btn-flythrough" onclick="switchEndoTab('flythrough')">🎥 Endoluminal Rehearsal</button>
+        </div>
+
+        <!-- Tab 1: Calyceal Reachability -->
+        <div id="endo-tab-reach" class="endo-tab-content">
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 14px;">
+            <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+              <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Collecting System Reachability</div>
+              <div id="endo-kpi-coverage" style="font-size: 24px; font-weight: 800; color: #10b981; margin: 4px 0;">100%</div>
+              <div id="endo-kpi-calyces-count" style="font-size: 10px; color: #6ee7b7;">3 of 3 Calyces Accessible</div>
+            </div>
+            <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+              <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Minimum Deflection Margin</div>
+              <div id="endo-kpi-margin" style="font-size: 24px; font-weight: 800; color: #38bdf8; margin: 4px 0;">+42.0°</div>
+              <div style="font-size: 10px; color: #7dd3fc;">Safety clearance over mechanical limit</div>
+            </div>
+            <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+              <div style="font-size: 10px; color: var(--text-secondary); text-transform: uppercase;">Secondary Puncture Need</div>
+              <div id="endo-kpi-secondary" style="font-size: 24px; font-weight: 800; color: #10b981; margin: 4px 0;">NOT REQUIRED</div>
+              <div style="font-size: 10px; color: #6ee7b7;">Single tract multi-calyceal clearance</div>
+            </div>
+          </div>
+
+          <!-- Reachability Table -->
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px;">Per-Calyx Anatomical Deflection & Accessibility Matrix</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead>
+                <tr style="background: #0b0e14; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); text-align: left;">
+                  <th style="padding: 6px 8px;">Calyx Group</th>
+                  <th style="padding: 6px 8px;">Access Mode</th>
+                  <th style="padding: 6px 8px;">Infundibulopelvic Angle</th>
+                  <th style="padding: 6px 8px;">Required Deflection</th>
+                  <th style="padding: 6px 8px;">Tool-Derated Limit</th>
+                  <th style="padding: 6px 8px;">Clearance Margin</th>
+                  <th style="padding: 6px 8px;">Status</th>
+                </tr>
+              </thead>
+              <tbody id="endo-reach-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+
+          <div id="endo-reach-advisory" style="background: rgba(16, 185, 129, 0.08); border: 1px solid #10b981; border-radius: 6px; padding: 10px 14px; font-size: 11.5px; color: #6ee7b7; line-height: 1.4;">
+            Strategic Advisory: Active tract allows direct rigid access to target Lower Pole and flexible endoscopic clearance of Middle and Upper poles.
+          </div>
+        </div>
+
+        <!-- Tab 2: Stone Coverage -->
+        <div id="endo-tab-stone" class="endo-tab-content" style="display: none;">
+          <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 12px; font-weight: 700; color: #ec4899;">Continuous Geometric Stone Access Coverage (f_geom)</span>
+              <span id="endo-stone-cov-pct" style="font-size: 16px; font-weight: 800; color: #10b981;">100.0%</span>
+            </div>
+            <div style="background: #1e293b; height: 12px; border-radius: 6px; overflow: hidden; margin-bottom: 8px;">
+              <div id="endo-stone-cov-bar" style="background: linear-gradient(90deg, #10b981, #00d2ff); width: 100%; height: 100%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; font-size: 11px; color: var(--text-secondary);">
+              <span>Accessible Stone Volume: <strong id="endo-accessible-vol" style="color: #10b981;">-- mm³</strong></span>
+              <span>Total Calculus Burden: <strong id="endo-total-vol">-- mm³</strong></span>
+            </div>
+          </div>
+
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 10px;">Calculus Inventory & Endoluminal Clearance Status</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+              <thead>
+                <tr style="background: #0b0e14; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); text-align: left;">
+                  <th style="padding: 6px 8px;">Stone ID</th>
+                  <th style="padding: 6px 8px;">Location</th>
+                  <th style="padding: 6px 8px;">Volume (mm³)</th>
+                  <th style="padding: 6px 8px;">Coverage Ratio</th>
+                  <th style="padding: 6px 8px;">Accessibility Class</th>
+                  <th style="padding: 6px 8px;">Operative Clearance Method</th>
+                </tr>
+              </thead>
+              <tbody id="endo-stone-tbody">
+                <!-- Dynamically populated -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 3: Access Caliber & Sizing -->
+        <div id="endo-tab-caliber" class="endo-tab-content" style="display: none;">
+          <div style="background: var(--bg-surface-elevated); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 6px;">Infundibular Lumen Feret & Sheath Caliber Constraints</div>
+            <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4; margin-bottom: 10px;">
+              Patient Target Calyx Minimum Feret Diameter: <strong id="endo-min-feret-display" style="color: #38bdf8;">-- mm</strong>. Dilating sheath outer diameter beyond infundibular width risks parenchymal tears and hemorrhage.
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;" id="endo-caliber-cards-container">
+              <!-- Dynamically populated with Standard PCNL & Mini-PCNL cards -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Virtual Nephroscopy Rehearsal -->
+        <div id="endo-tab-flythrough" class="endo-tab-content" style="display: none;">
+          <div style="background: #080c14; border: 1px solid #1e293b; border-radius: 6px; padding: 14px; margin-bottom: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+              <span style="font-size: 12px; font-weight: 700; color: #ec4899;">Endoluminal Flight Path Keyframe Navigation</span>
+              <span id="endo-kf-frame-label" style="font-size: 12px; font-family: monospace; color: var(--accent-cyan); font-weight: 700;">Frame 0 / 36</span>
+            </div>
+            <input type="range" id="endo-kf-slider" min="0" max="36" value="0" style="width: 100%; margin-bottom: 10px;" oninput="onEndoSliderChange(this.value)">
+
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px;">
+              <div style="background: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #1e293b;">
+                <div style="font-size: 10px; color: var(--text-secondary);">Arc Length</div>
+                <div id="endo-kf-arc" style="font-size: 14px; font-weight: 700; color: #38bdf8;">0.0 mm</div>
+              </div>
+              <div style="background: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #1e293b;">
+                <div style="font-size: 10px; color: var(--text-secondary);">Current Calyx</div>
+                <div id="endo-kf-calyx" style="font-size: 14px; font-weight: 700; color: #10b981;">LP</div>
+              </div>
+              <div style="background: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #1e293b;">
+                <div style="font-size: 10px; color: var(--text-secondary);">Active Deflection</div>
+                <div id="endo-kf-deflection" style="font-size: 14px; font-weight: 700; color: #f59e0b;">0.0°</div>
+              </div>
+              <div style="background: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #1e293b;">
+                <div style="font-size: 10px; color: var(--text-secondary);">Lumen Feret Min</div>
+                <div id="endo-kf-feret" style="font-size: 14px; font-weight: 700; color: #c084fc;">-- mm</div>
+              </div>
+            </div>
+
+            <div style="margin-top: 10px; font-size: 11px; font-family: monospace; color: var(--text-secondary);">
+              Camera LPS: <span id="endo-kf-cam-pos" style="color: #e2e8f0;">[--, --, --]</span> | Forward: <span id="endo-kf-cam-fwd" style="color: #94a3b8;">[--, --, --]</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Specification: <strong>Milestone M15 Flexible Reachability Engine</strong></span>
+        <button class="btn" onclick="document.getElementById('modal-endoscopy').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Scripts -->
   <script src="viewer.js?v=20261002_05"></script>
   <script src="mpr.js?v=20261002_05"></script>
@@ -1802,11 +2111,14 @@
         switchRehearsalTab('us');
       });
       document.getElementById('btn-open-laterality').addEventListener('click', openLateralityModal);
+      document.getElementById('btn-open-position-confirm')?.addEventListener('click', openPositionConfirmModal);
+      document.getElementById('btn-open-endoscopy')?.addEventListener('click', openEndoscopyModal);
       document.getElementById('btn-submit-laterality').addEventListener('click', submitLateralityConfirmation);
       document.getElementById('btn-open-verbal-protocol').addEventListener('click', openVerbalProtocolCard);
       document.getElementById('btn-validate-carm-entry').addEventListener('click', validateCarmAngleEntry);
       document.getElementById('btn-open-phantom').addEventListener('click', () => {
         document.getElementById('modal-phantom').style.display = 'flex';
+        loadPhantomModalData();
       });
       document.getElementById('rehearsal-slider').addEventListener('input', updateRehearsalAdvancement);
       document.getElementById('rehearsal-contrast-toggle')?.addEventListener('change', loadRehearsalDrrImages);
@@ -1927,6 +2239,14 @@
 
       updateStateBadge(meta.state, meta.is_stale);
       document.getElementById('target-side-label').textContent = `${(meta.target_side || 'left').toUpperCase()} KIDNEY`;
+
+      const poseConfirmed = meta.surgical_position_confirmation && meta.surgical_position_confirmation.is_confirmed;
+      const poseVal = meta.surgical_position_confirmation?.operative_position || 'PRONE_STANDARD';
+      const poseEl = document.getElementById('info-surgical-pose');
+      if (poseEl) {
+        poseEl.textContent = poseConfirmed ? `${poseVal} (U2 VERIFIED)` : `${poseVal} (U2 PENDING)`;
+        poseEl.style.color = poseConfirmed ? 'var(--accent-teal)' : '#a78bfa';
+      }
 
       mprViewer.setCase(caseId);
       viewer3d.clearScene();
@@ -2762,6 +3082,323 @@
         alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY. Planning unlocked.`);
       } catch (err) {
         alert('Laterality check network error: ' + err.message);
+      }
+    }
+
+    // =========================================================================
+    // Interlock U2: Surgical Patient Position & Orientation Gate
+    // =========================================================================
+    function openPositionConfirmModal() {
+      if (!currentCaseId) {
+        alert('Please load or create an active case first.');
+        return;
+      }
+      document.getElementById('pos-case-id-display').innerText = currentCaseId;
+      const ctTag = (currentCaseMeta && currentCaseMeta.patient_position_tag) ? currentCaseMeta.patient_position_tag : 'HFS (Head First Supine)';
+      document.getElementById('pos-ct-tag-display').innerText = ctTag;
+
+      const confirmedPose = currentCaseMeta?.surgical_position_confirmation?.operative_position || 'PRONE_STANDARD';
+      const rad = document.querySelector(`input[name="surgical-pose-opt"][value="${confirmedPose}"]`);
+      if (rad) rad.checked = true;
+      updatePoseTransformPreview(confirmedPose);
+
+      document.getElementById('modal-position-confirm').style.display = 'flex';
+    }
+
+    function updatePoseTransformPreview(pose) {
+      const descEl = document.getElementById('pose-transform-desc');
+      if (!descEl) return;
+      if (pose === 'PRONE_STANDARD' || pose === 'PRONE_SPLIT_LEG') {
+        descEl.innerHTML = `CT Supine (HFS) &rarr; <strong>Prone Operative Setup</strong>: Inverts Left-Right (X) and Anterior-Posterior (Y) axes: <code>diag(-1, -1, 1, 1)</code>. AcuCalyx automatically applies this rigid transformation to all C-arm gantry projections and needle entry vectors.`;
+      } else if (pose === 'FLANK_LATERAL') {
+        descEl.innerHTML = `CT Supine (HFS) &rarr; <strong>Flank Lateral Pose</strong>: Applies 90&deg; roll rotation about cranial-caudal (Z) axis. C-arm frontal becomes lateral; oblique angles rotate accordingly.`;
+      } else if (pose === 'SUPINE_VALDIVIA') {
+        descEl.innerHTML = `CT Supine (HFS) &rarr; <strong>Supine Valdivia / Galdakao Pose</strong>: Concordant with CT supine acquisition frame. Identity spatial transformation applied with slight flank elevation tilt compensation.`;
+      }
+    }
+
+    async function submitPositionConfirmation() {
+      if (!currentCaseId) return;
+      const isClinicianSigned = document.getElementById('check-pos-twostep').checked;
+      if (!isClinicianSigned) {
+        alert('Interlock U2 Violation: Clinician authorization signature checkbox is required.');
+        return;
+      }
+
+      const selectedPose = document.querySelector('input[name="surgical-pose-opt"]:checked')?.value || 'PRONE_STANDARD';
+      const ctAcq = (currentCaseMeta && currentCaseMeta.patient_position_tag) ? currentCaseMeta.patient_position_tag : 'HFS';
+
+      try {
+        const res = await fetch(`/api/usability/cases/${currentCaseId}/position-confirm`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            ct_acquisition_position: ctAcq,
+            planned_operative_position: selectedPose,
+            is_clinician_confirmed: true
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json();
+          alert(`Interlock U2 Rejection:\n\n${errData.detail || 'Position confirmation failed.'}`);
+          return;
+        }
+
+        const data = await res.json();
+        if (currentCaseMeta) {
+          if (!currentCaseMeta.surgical_position_confirmation) {
+            currentCaseMeta.surgical_position_confirmation = {};
+          }
+          currentCaseMeta.surgical_position_confirmation.is_confirmed = true;
+          currentCaseMeta.surgical_position_confirmation.operative_position = selectedPose;
+        }
+
+        const poseEl = document.getElementById('info-surgical-pose');
+        if (poseEl) {
+          poseEl.textContent = `${selectedPose} (U2 VERIFIED)`;
+          poseEl.style.color = 'var(--accent-teal)';
+        }
+
+        document.getElementById('modal-position-confirm').style.display = 'none';
+        alert(`✓ Interlock U2 Passed: Surgical position verified as ${selectedPose}.\n${data.message}`);
+      } catch (err) {
+        alert('Position verification network error: ' + err.message);
+      }
+    }
+
+    // =========================================================================
+    // Milestone M15: Flexible Endoscopic Reachability & Stone Clearance Cockpit
+    // =========================================================================
+    let currentEndoKeyframes = [];
+
+    function openEndoscopyModal() {
+      if (!currentCaseId) {
+        alert('Please load or create an active case first.');
+        return;
+      }
+      const candId = selectedCandidateId || (currentCandidates[0] ? (currentCandidates[0].candidate_id || currentCandidates[0].id) : 'cand-001');
+      const tractLabel = currentCandidates[0]?.target_calyx || 'Posterior Lower Pole';
+      document.getElementById('endo-tract-display').innerText = `${candId} (${tractLabel})`;
+      document.getElementById('modal-endoscopy').style.display = 'flex';
+      loadEndoscopyData();
+    }
+
+    function switchEndoTab(tabKey) {
+      const tabs = ['reach', 'stone', 'caliber', 'flythrough'];
+      tabs.forEach(t => {
+        const btn = document.getElementById(`tab-endo-btn-${t}`);
+        const content = document.getElementById(`endo-tab-${t}`);
+        if (btn) btn.classList.toggle('active', t === tabKey);
+        if (content) content.style.display = (t === tabKey) ? 'block' : 'none';
+      });
+    }
+
+    async function loadEndoscopyData() {
+      if (!currentCaseId) return;
+      const candId = selectedCandidateId || (currentCandidates[0] ? (currentCandidates[0].candidate_id || currentCandidates[0].id) : 'cand-001');
+      const instModel = document.getElementById('endo-instrument-select').value;
+      const toolConfig = document.getElementById('endo-tool-select').value;
+      const isDemo = currentCaseMeta?.is_demo !== false;
+
+      try {
+        // 1. Fetch Reachability
+        const reachUrl = `/api/cases/${currentCaseId}/endoscopy/${candId}/reachability?instrument_model_id=${instModel}&tool=${toolConfig}&demo_mode=${isDemo}`;
+        const reachRes = await fetch(reachUrl);
+        if (reachRes.ok) {
+          const reachData = await reachRes.json();
+          renderEndoReachability(reachData);
+        }
+
+        // 2. Fetch Stone Coverage
+        const stoneUrl = `/api/cases/${currentCaseId}/endoscopy/${candId}/stone-coverage?instrument_model_id=${instModel}&tool=${toolConfig}&demo_mode=${isDemo}`;
+        const stoneRes = await fetch(stoneUrl);
+        if (stoneRes.ok) {
+          const stoneData = await stoneRes.json();
+          renderEndoStoneCoverage(stoneData);
+        }
+
+        // 3. Fetch Access Caliber Profiles
+        const caliberUrl = `/api/cases/${currentCaseId}/endoscopy/${candId}/access-caliber-profiles?demo_mode=${isDemo}`;
+        const caliberRes = await fetch(caliberUrl);
+        if (caliberRes.ok) {
+          const caliberData = await caliberRes.json();
+          renderEndoCaliberProfiles(caliberData);
+        }
+
+        // 4. Fetch Flythrough Rehearsal Keyframes
+        const flyUrl = `/api/cases/${currentCaseId}/endoscopy/${candId}/endoluminal-rehearsal?instrument_model_id=${instModel}&tool=${toolConfig}&demo_mode=${isDemo}`;
+        const flyRes = await fetch(flyUrl);
+        if (flyRes.ok) {
+          const flyData = await flyRes.json();
+          currentEndoKeyframes = flyData.keyframes || [];
+          const slider = document.getElementById('endo-kf-slider');
+          if (slider && currentEndoKeyframes.length > 0) {
+            slider.max = currentEndoKeyframes.length - 1;
+            slider.value = 0;
+            onEndoSliderChange(0);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching endoscopy analytics:', err);
+      }
+    }
+
+    function renderEndoReachability(data) {
+      const calyces = data.calyces || [];
+      const accessibleCount = calyces.filter(c => c.accessible).length;
+      const totalCount = calyces.length || 1;
+      const covPct = Math.round((accessibleCount / totalCount) * 100);
+
+      document.getElementById('endo-kpi-coverage').innerText = `${covPct}%`;
+      document.getElementById('endo-kpi-calyces-count').innerText = `${accessibleCount} of ${totalCount} Calyces Accessible`;
+
+      const minMargin = calyces.reduce((min, c) => Math.min(min, c.deflection_clearance_deg), 999);
+      const marginEl = document.getElementById('endo-kpi-margin');
+      if (marginEl) {
+        marginEl.innerText = minMargin < 900 ? `+${minMargin.toFixed(1)}°` : 'N/A';
+        marginEl.style.color = minMargin > 15 ? '#10b981' : (minMargin > 0 ? '#f59e0b' : '#ef4444');
+      }
+
+      const secEl = document.getElementById('endo-kpi-secondary');
+      if (secEl) {
+        const needSec = accessibleCount < totalCount;
+        secEl.innerText = needSec ? 'SECOND TRACT ADVISED' : 'NOT REQUIRED';
+        secEl.style.color = needSec ? '#f59e0b' : '#10b981';
+      }
+
+      const tbody = document.getElementById('endo-reach-tbody');
+      if (tbody) {
+        tbody.innerHTML = calyces.map(c => `
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <td style="padding: 6px 8px; font-weight: 700; color: var(--accent-cyan);">${c.calyx_group} (${c.calyx_id})</td>
+            <td style="padding: 6px 8px;">${c.access_mode}</td>
+            <td style="padding: 6px 8px;">${c.ipa_deg ? c.ipa_deg.toFixed(1) + '°' : '--'}</td>
+            <td style="padding: 6px 8px;">${c.required_deflection_deg.toFixed(1)}°</td>
+            <td style="padding: 6px 8px;">${c.max_deflection_deg.toFixed(1)}°</td>
+            <td style="padding: 6px 8px; font-weight: 600; color: ${c.deflection_clearance_deg > 0 ? '#10b981' : '#ef4444'};">
+              ${c.deflection_clearance_deg > 0 ? '+' : ''}${c.deflection_clearance_deg.toFixed(1)}°
+            </td>
+            <td style="padding: 6px 8px;">
+              <span class="version-pill" style="background: ${c.accessible ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${c.accessible ? '#10b981' : '#ef4444'};">
+                ${c.accessible ? 'ACCESSIBLE' : 'RESTRICTED'}
+              </span>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      const advEl = document.getElementById('endo-reach-advisory');
+      if (advEl && data.strategic_advisory) {
+        advEl.innerText = `Strategic Advisory: ${data.strategic_advisory}`;
+      }
+    }
+
+    function renderEndoStoneCoverage(data) {
+      const covPct = data.geometric_coverage_estimate_percent ?? 100;
+      document.getElementById('endo-stone-cov-pct').innerText = `${covPct.toFixed(1)}%`;
+      document.getElementById('endo-stone-cov-bar').style.width = `${Math.min(100, covPct)}%`;
+      document.getElementById('endo-accessible-vol').innerText = `${data.total_accessible_volume_mm3 ?? 0} mm³`;
+      document.getElementById('endo-total-vol').innerText = `${data.total_stone_volume_mm3 ?? 0} mm³`;
+
+      const tbody = document.getElementById('endo-stone-tbody');
+      if (tbody) {
+        const stones = data.stones || [];
+        tbody.innerHTML = stones.map(s => `
+          <tr style="border-bottom: 1px solid var(--border-color);">
+            <td style="padding: 6px 8px; font-family: monospace; font-weight: 600;">${s.stone_id}</td>
+            <td style="padding: 6px 8px; color: var(--accent-cyan); font-weight: 600;">${s.calyx_id}</td>
+            <td style="padding: 6px 8px;">${s.total_volume_mm3}</td>
+            <td style="padding: 6px 8px; font-weight: 700; color: #10b981;">${(s.coverage_fraction * 100).toFixed(0)}%</td>
+            <td style="padding: 6px 8px;">
+              <span class="version-pill" style="background: ${s.access_class === 'FULLY_ACCESSIBLE' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${s.access_class === 'FULLY_ACCESSIBLE' ? '#10b981' : '#f59e0b'};">
+                ${s.access_class}
+              </span>
+            </td>
+            <td style="padding: 6px 8px; color: var(--text-secondary);">${s.access_mode || 'Flexible Laser Lithotripsy'}</td>
+          </tr>
+        `).join('');
+      }
+    }
+
+    function renderEndoCaliberProfiles(data) {
+      const minFeret = data.target_calyx_min_feret_mm ?? 6.2;
+      document.getElementById('endo-min-feret-display').innerText = `${minFeret.toFixed(2)} mm`;
+
+      const container = document.getElementById('endo-caliber-cards-container');
+      if (!container) return;
+
+      const profiles = data.profiles || {};
+      const cardsHtml = Object.entries(profiles).map(([pk, p]) => {
+        const isCompatible = p.infundibular_clearance_status === 'COMPATIBLE' || p.infundibular_clearance_status === 'AMPLE_CLEARANCE';
+        return `
+          <div style="background: #0b0e14; border: 1px solid ${isCompatible ? '#10b981' : '#f59e0b'}; border-radius: 6px; padding: 12px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+              <span style="font-size: 13px; font-weight: 700; color: ${isCompatible ? '#10b981' : '#f59e0b'};">${p.caliber_class} (${p.sheath_french} Fr)</span>
+              <span class="version-pill" style="background: ${isCompatible ? 'rgba(16, 185, 129, 0.15)' : 'rgba(245, 158, 11, 0.15)'}; color: ${isCompatible ? '#10b981' : '#f59e0b'};">
+                ${p.infundibular_clearance_status}
+              </span>
+            </div>
+            <div style="font-size: 11px; margin-bottom: 4px;">Sheath Outer Diameter: <strong>${p.sheath_outer_diameter_mm} mm</strong> (Min Feret: ${p.minimum_lumen_feret_required_mm} mm)</div>
+            <div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 6px;">Lithotripsy: <strong>${p.primary_lithotripsy_modality}</strong> | ${p.evacuation_mechanism}</div>
+            <div style="font-size: 10.5px; color: #94a3b8; border-top: 1px solid #1e293b; padding-top: 6px; line-height: 1.35;">
+              ${p.relative_operative_tradeoffs}
+            </div>
+          </div>
+        `;
+      }).join('');
+      container.innerHTML = cardsHtml;
+    }
+
+    function onEndoSliderChange(frameIdx) {
+      const idx = parseInt(frameIdx, 10);
+      if (!currentEndoKeyframes || !currentEndoKeyframes[idx]) return;
+      const kf = currentEndoKeyframes[idx];
+
+      document.getElementById('endo-kf-frame-label').innerText = `Frame ${idx} / ${currentEndoKeyframes.length - 1}`;
+      document.getElementById('endo-kf-arc').innerText = `${kf.arc_length_s.toFixed(1)} mm`;
+      document.getElementById('endo-kf-calyx').innerText = kf.current_calyx_id || kf.current_calyx_group || 'LP';
+      document.getElementById('endo-kf-deflection').innerText = `${kf.active_deflection_deg.toFixed(1)}°`;
+      document.getElementById('endo-kf-feret').innerText = kf.min_feret_diameter_mm ? `${kf.min_feret_diameter_mm.toFixed(1)} mm` : '-- mm';
+
+      const pos = kf.camera_position_lps || [0, 0, 0];
+      const fwd = kf.camera_forward_vector || [0, 0, 1];
+      document.getElementById('endo-kf-cam-pos').innerText = `[${pos[0]}, ${pos[1]}, ${pos[2]}]`;
+      document.getElementById('endo-kf-cam-fwd').innerText = `[${fwd[0]}, ${fwd[1]}, ${fwd[2]}]`;
+    }
+
+    async function loadPhantomModalData() {
+      const container = document.getElementById('phantom-catalog-container');
+      if (!container) return;
+      try {
+        const caseId = currentCaseId || 'demo-case-001';
+        const res = await fetch(`/api/cases/${caseId}/endoscopy/reference-phantoms`);
+        if (!res.ok) {
+          container.innerText = 'Unable to load reference phantom registry.';
+          return;
+        }
+        const data = await res.json();
+        const phantoms = data.reference_phantoms || [];
+        if (phantoms.length === 0) {
+          container.innerText = 'No certified phantoms registered.';
+          return;
+        }
+        container.innerHTML = phantoms.map(p => `
+          <div style="background: #0b0e14; border: 1px solid var(--border-color); border-radius: 6px; padding: 10px; margin-top: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+              <strong style="color: var(--accent-cyan); font-size: 12px;">${p.phantom_id}</strong>
+              <span class="version-pill" style="color: #10b981; background: rgba(16, 185, 129, 0.15);">${p.material}</span>
+            </div>
+            <div style="color: var(--text-secondary); margin-bottom: 6px;">${p.description}</div>
+            <div style="display: flex; gap: 14px; color: var(--text-secondary); font-size: 10.5px;">
+              <span>Refractive Index: <strong style="color: #fff;">${p.refractive_index}</strong></span>
+              <span>Optical Fiducials: <strong style="color: #fff;">${p.fiducials_count}</strong></span>
+              <span>Pelvis Volume: <strong style="color: #fff;">${p.pelvis_volume_mm3} mm³</strong></span>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        container.innerText = 'Error loading phantom registry: ' + err.message;
       }
     }
 
