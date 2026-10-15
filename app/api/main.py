@@ -1441,6 +1441,10 @@ app.include_router(ultrasound_router)
 from app.api.routes_endoscopy import router as endoscopy_router
 app.include_router(endoscopy_router)
 
+# Mount CT Urography Feasibility & M15-V Validation Gate Routes (Horizon 3 / M15.1)
+from app.api.routes_validation import router as validation_router
+app.include_router(validation_router)
+
 # Mount Frontend UI Static Files
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

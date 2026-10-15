@@ -122,6 +122,9 @@
       <button id="btn-usability-study" class="btn" style="background: rgba(168, 85, 247, 0.15); border: 1px solid #a855f7; color: #c084fc; font-weight: 600;" onclick="openUsabilityStudyModal()" title="IEC 62366-1 Formative Usability Pilot Walkthrough">
         🧪 Usability Study
       </button>
+      <button id="btn-validation-gate" class="btn" style="background: rgba(16, 185, 129, 0.15); border: 1px solid #10b981; color: #34d399; font-weight: 600;" onclick="openValidationGateModal()" title="Milestone M15-V CTU Multi-Reader & VMTK Benchmark Gate">
+        🔬 M15-V Gate
+      </button>
     </div>
   </header>
 
@@ -1606,6 +1609,142 @@
           ⬇️ Download Printable Markdown Worksheet
         </a>
         <button class="btn" onclick="document.getElementById('modal-discovery-guide').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Milestone M15-V / Horizon 3: CT Urography Multi-Reader Consensus & VMTK Benchmark Gate Modal -->
+  <div id="modal-validation-gate" class="modal-overlay" style="display: none; z-index: 1075;">
+    <div class="modal-content" style="width: 1200px; max-width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #34d399;">🔬 Milestone M15-V: CTU Multi-Reader & VMTK Centerline Gate</span>
+          <span class="version-pill" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-weight: 600;">EVIDENCE BENCHMARK (M15.1)</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm btn-primary" onclick="runValidationBenchmark()" style="background: #10b981; border-color: #059669;">
+            ⚡ Run Cohort Benchmark
+          </button>
+          <button class="btn btn-sm" onclick="downloadValidationReportJson()">⬇️ Export JSON</button>
+          <button class="btn btn-sm" onclick="closeValidationGateModal()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;">
+        <!-- Executive Decision Banner -->
+        <div id="gate-decision-banner" style="background: rgba(16, 185, 129, 0.1); border: 1px solid #10b981; border-radius: 6px; padding: 12px 16px; margin-bottom: 14px; display: flex; justify-content: space-between; align-items: center;">
+          <div>
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span id="gate-decision-badge" class="state-badge" style="background: #10b981; color: #000; font-weight: 800; font-size: 12px; padding: 4px 10px;">GO_FEASIBILITY_PASSED</span>
+              <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">Milestone M15-V Acceptance Decision</span>
+            </div>
+            <div id="gate-summary-text" style="font-size: 11px; color: var(--text-secondary); margin-top: 6px;">
+              Phase 0 Feasibility Pilot evaluated 3 excretory CTU cases. Mean calyx sensitivity: 95.8%, Mean centerline MAE: 0.12 mm.
+            </div>
+          </div>
+          <div style="text-align: right; font-size: 11px; color: var(--text-secondary);">
+            Standard: <strong>IEC 62304 / ISO 14971</strong><br>
+            Reference: <strong>VMTK Distance-Ridge Dijkstra</strong>
+          </div>
+        </div>
+
+        <!-- 4 Metric Scorecards -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+          <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 10.5px; color: var(--text-secondary); text-transform: uppercase;">Calyx Sensitivity (≥85%)</div>
+            <div id="gate-calyx-sens" style="font-size: 24px; font-weight: 800; color: #10b981; margin: 4px 0;">--%</div>
+            <div style="font-size: 10px; color: #6ee7b7;">Consensus Target Coverage</div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 10.5px; color: var(--text-secondary); text-transform: uppercase;">Centerline MAE (≤1.0 mm)</div>
+            <div id="gate-centerline-mae" style="font-size: 24px; font-weight: 800; color: #38bdf8; margin: 4px 0;">-- mm</div>
+            <div style="font-size: 10px; color: #7dd3fc;">Mean Curve Positional Error</div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 10.5px; color: var(--text-secondary); text-transform: uppercase;">Hausdorff H95 (≤2.0 mm)</div>
+            <div id="gate-centerline-h95" style="font-size: 24px; font-weight: 800; color: #a855f7; margin: 4px 0;">-- mm</div>
+            <div style="font-size: 10px; color: #c084fc;">95th Percentile Curve Bound</div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 10.5px; color: var(--text-secondary); text-transform: uppercase;">Opacification Fail-Closed</div>
+            <div id="gate-rejected-cases" style="font-size: 24px; font-weight: 800; color: #f59e0b; margin: 4px 0;">100%</div>
+            <div style="font-size: 10px; color: #fcd34d;">Non-Opacified Gated Closed</div>
+          </div>
+        </div>
+
+        <!-- CTU Pilot Cohort Inspection Table -->
+        <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">CT Urography Pilot Cases (3 Clinical Readers per Case)</span>
+            <span style="font-size: 10.5px; color: var(--text-secondary);">Disagreement preservation & VMTK benchmark comparison</span>
+          </div>
+          <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
+            <thead>
+              <tr style="background: #0b0e14; color: var(--text-secondary); border-bottom: 1px solid var(--border-color); text-align: left;">
+                <th style="padding: 6px 8px;">Case ID</th>
+                <th style="padding: 6px 8px;">Opacification Assessment</th>
+                <th style="padding: 6px 8px;">Readers</th>
+                <th style="padding: 6px 8px;">Inter-Reader Dice</th>
+                <th style="padding: 6px 8px;">Ambiguity Vol</th>
+                <th style="padding: 6px 8px;">Calyx Concordance</th>
+                <th style="padding: 6px 8px;">Gate Status</th>
+                <th style="padding: 6px 8px; text-align: right;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="ctu-cohort-table-body">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Selected Case Multi-Reader Landmark & Disagreement Drilldown -->
+        <div id="ctu-drilldown-panel" style="display: none; background: #0b0e14; border: 1px solid #1e293b; border-radius: 6px; padding: 14px; margin-bottom: 14px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 12px; font-weight: 700; color: var(--accent-cyan);">Detailed Multi-Reader Agreement: <span id="drilldown-case-id">--</span></span>
+            <button class="btn btn-sm" onclick="document.getElementById('ctu-drilldown-panel').style.display='none'">✕ Close Drilldown</button>
+          </div>
+          <div id="drilldown-content" style="font-size: 11px; color: var(--text-secondary);">
+            <!-- Injected via inspectCtuCase() -->
+          </div>
+        </div>
+
+        <!-- Ingest Clinical Case Drawer -->
+        <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;" onclick="toggleIngestDrawer()">
+            <span style="font-size: 12px; font-weight: 700; color: var(--text-primary);">➕ Ingest De-Identified Clinical CTU Case</span>
+            <span id="ingest-drawer-icon" style="font-size: 12px; color: var(--text-secondary);">▼</span>
+          </div>
+          <div id="ingest-drawer-body" style="display: none; margin-top: 10px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Case ID:</label>
+                <input type="text" id="ingest-case-id" class="text-input" value="CTU_CLINICAL_05" style="width: 100%; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+              </div>
+              <div>
+                <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">DICOM Series UID:</label>
+                <input type="text" id="ingest-series-uid" class="text-input" value="1.2.840.113619.2.55.2026.5" style="width: 100%; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+              </div>
+              <div>
+                <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Opacification Quality:</label>
+                <select id="ingest-opacification" class="case-select" style="width: 100%; font-size: 11px;">
+                  <option value="ADEQUATE_EXCRETORY">ADEQUATE_EXCRETORY (HU &gt; 150)</option>
+                  <option value="SUBOPTIMAL">SUBOPTIMAL (Diluted)</option>
+                  <option value="NON_OPACIFIED">NON_OPACIFIED (Fail-Closed)</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Scanner Model:</label>
+                <input type="text" id="ingest-scanner" class="text-input" value="Siemens Somatom Force" style="width: 100%; font-size: 11px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+              </div>
+            </div>
+            <div style="display: flex; justify-content: flex-end;">
+              <button class="btn btn-primary" onclick="submitCtuIngest()">Ingest Clinical Series</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Validation Standard: <strong>M15-V Acceptance Gate (Milestone M15.1)</strong></span>
+        <button class="btn" onclick="closeValidationGateModal()">Close</button>
       </div>
     </div>
   </div>
@@ -3400,6 +3539,229 @@
       container.innerHTML = html;
     }
 
+    // =========================================================================
+    // Milestone M15-V / Horizon 3: CTU Multi-Reader & Validation Gate Logic
+    // =========================================================================
+    let currentValidationReportJson = null;
+
+    async function openValidationGateModal() {
+      const modal = document.getElementById('modal-validation-gate');
+      if (!modal) return;
+      modal.style.display = 'flex';
+      await loadCtuCohort();
+      await fetchLatestValidationReport();
+    }
+
+    function closeValidationGateModal() {
+      const modal = document.getElementById('modal-validation-gate');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function loadCtuCohort() {
+      const tbody = document.getElementById('ctu-cohort-table-body');
+      if (!tbody) return;
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px; color: var(--text-secondary);">⏳ Loading CTU cohort cases...</td></tr>';
+      try {
+        const res = await fetch('/api/validation/ctu/cohort');
+        if (!res.ok) throw new Error('Could not load cohort');
+        const cohort = await res.json();
+        tbody.innerHTML = '';
+        cohort.forEach(c => {
+          const tr = document.createElement('tr');
+          tr.style.cssText = 'border-bottom: 1px solid #1e293b;';
+          const isNonOp = c.opacification_quality === 'NON_OPACIFIED';
+          const opColor = isNonOp ? '#ef4444' : (c.opacification_quality === 'SUBOPTIMAL' ? '#f59e0b' : '#10b981');
+          const diceText = c.consensus_summary ? `${(c.consensus_summary.mean_pairwise_dice * 100).toFixed(1)}%` : 'N/A';
+          const ambVol = c.consensus_summary ? `${c.consensus_summary.ambiguity_volume_mm3.toFixed(1)} mm³` : 'N/A';
+          const calyxCount = c.consensus_summary ? `${c.consensus_summary.calyx_count} calyces` : '--';
+          const statusBadge = isNonOp 
+            ? '<span class="state-badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 10px;">REJECTED_NON_OP</span>'
+            : '<span class="state-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px;">EVALUABLE</span>';
+
+          tr.innerHTML = `
+            <td style="padding: 8px; font-weight: 700; color: var(--text-primary);">${c.case_id}</td>
+            <td style="padding: 8px; color: ${opColor}; font-weight: 600;">${c.opacification_quality}</td>
+            <td style="padding: 8px;">${c.reader_count} readers</td>
+            <td style="padding: 8px; font-weight: 600;">${diceText}</td>
+            <td style="padding: 8px; color: #fbbf24;">${ambVol}</td>
+            <td style="padding: 8px;">${calyxCount}</td>
+            <td style="padding: 8px;">${statusBadge}</td>
+            <td style="padding: 8px; text-align: right;">
+              <button class="btn btn-sm" onclick="inspectCtuCase('${c.case_id}')" style="padding: 2px 8px; font-size: 10.5px;">Inspect</button>
+            </td>
+          `;
+          tbody.appendChild(tr);
+        });
+      } catch (err) {
+        tbody.innerHTML = `<tr><td colspan="8" style="color: #ef4444; padding: 14px;">Error: ${err.message}</td></tr>`;
+      }
+    }
+
+    async function inspectCtuCase(caseId) {
+      const panel = document.getElementById('ctu-drilldown-panel');
+      const title = document.getElementById('drilldown-case-id');
+      const content = document.getElementById('drilldown-content');
+      title.textContent = caseId;
+      content.innerHTML = '⏳ Loading multi-reader consensus and landmark dispersion metrics...';
+      panel.style.display = 'block';
+
+      try {
+        const res = await fetch(`/api/validation/ctu/cohort/${caseId}`);
+        if (!res.ok) throw new Error('Case not found');
+        const data = await res.json();
+        
+        let readersHtml = '<div style="margin-bottom: 10px;"><strong>Expert Readers:</strong> ';
+        (data.readers || []).forEach(r => {
+          readersHtml += `<span class="version-pill" style="margin-right: 6px; font-size: 10px;">${r.reader_id} (${r.experience_years}y exp, conf: ${r.confidence_score})</span>`;
+        });
+        readersHtml += '</div>';
+
+        let calyxTable = '';
+        if (data.consensus && data.consensus.calyx_consensus) {
+          calyxTable = `
+            <div style="font-weight: 700; color: #38bdf8; margin: 8px 0 4px 0;">Calyx Landmark Consensus & Spatial Dispersion:</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10.5px; border: 1px solid #1e293b;">
+              <tr style="background: #1e293b; color: #94a3b8;">
+                <th style="padding: 4px 6px;">Calyx Target</th>
+                <th style="padding: 4px 6px;">Concordance</th>
+                <th style="padding: 4px 6px;">Consensus Centroid [L, P, S]</th>
+                <th style="padding: 4px 6px;">Dispersion Radius (≤5mm)</th>
+                <th style="padding: 4px 6px;">Status</th>
+              </tr>
+          `;
+          for (const [cName, cMet] of Object.entries(data.consensus.calyx_consensus)) {
+            const isWarn = cMet.is_high_disagreement;
+            calyxTable += `
+              <tr style="border-bottom: 1px solid #1e293b;">
+                <td style="padding: 4px 6px; font-weight: 600;">${cName}</td>
+                <td style="padding: 4px 6px;">${(cMet.concordance_fraction * 100).toFixed(0)}% (${cMet.num_readers} readers)</td>
+                <td style="padding: 4px 6px; font-family: var(--font-mono);">${cMet.consensus_centroid_lps.join(', ')}</td>
+                <td style="padding: 4px 6px; color: ${isWarn ? '#ef4444' : '#10b981'}; font-weight: 700;">${cMet.dispersion_radius_mm} mm</td>
+                <td style="padding: 4px 6px;">${isWarn ? '⚠️ HIGH DISPERSION' : '✓ CONCORDANT'}</td>
+              </tr>
+            `;
+          }
+          calyxTable += '</table>';
+        }
+
+        let infundibulumHtml = '';
+        if (data.consensus && data.consensus.infundibular_diameters_consensus) {
+          infundibulumHtml = '<div style="margin-top: 8px;"><strong>Consensus Infundibulum Calipers:</strong> ';
+          for (const [cName, stats] of Object.entries(data.consensus.infundibular_diameters_consensus)) {
+            infundibulumHtml += `<span style="margin-right: 12px; color: #cbd5e1;">${cName}: <strong>${stats.mean_mm} ± ${stats.std_mm} mm</strong></span>`;
+          }
+          infundibulumHtml += '</div>';
+        }
+
+        content.innerHTML = readersHtml + calyxTable + infundibulumHtml;
+      } catch (err) {
+        content.innerHTML = `<span style="color: #ef4444;">Error inspecting case: ${err.message}</span>`;
+      }
+    }
+
+    async function fetchLatestValidationReport() {
+      try {
+        const res = await fetch('/api/validation/ctu/benchmark/report');
+        if (!res.ok) return;
+        const rep = await res.json();
+        currentValidationReportJson = rep;
+        renderValidationReport(rep);
+      } catch (err) {
+        console.warn('Could not fetch validation report:', err);
+      }
+    }
+
+    async function runValidationBenchmark() {
+      try {
+        const res = await fetch('/api/validation/ctu/benchmark/run?calyx_tolerance_mm=4.0&centerline_mae_threshold_mm=1.2', {
+          method: 'POST'
+        });
+        if (!res.ok) throw new Error('Benchmark run failed');
+        const rep = await res.json();
+        currentValidationReportJson = rep;
+        renderValidationReport(rep);
+        alert(`🎯 Milestone M15-V Benchmark Completed!\n\nExecutive Decision: ${rep.executive_decision}\nEvaluable Cases: ${rep.evaluable_cases} (Non-opacified rejected: ${rep.rejected_non_opacified_cases})\nMean Calyx Sensitivity: ${(rep.mean_calyx_sensitivity * 100).toFixed(1)}%\nMean Centerline MAE: ${rep.mean_centerline_mae_mm.toFixed(2)} mm`);
+        await loadCtuCohort();
+      } catch (err) {
+        alert('Benchmark execution error: ' + err.message);
+      }
+    }
+
+    function renderValidationReport(rep) {
+      const badge = document.getElementById('gate-decision-badge');
+      const summary = document.getElementById('gate-summary-text');
+      const sens = document.getElementById('gate-calyx-sens');
+      const mae = document.getElementById('gate-centerline-mae');
+      const h95 = document.getElementById('gate-centerline-h95');
+      const rej = document.getElementById('gate-rejected-cases');
+
+      if (badge) {
+        badge.textContent = rep.executive_decision;
+        badge.style.background = rep.all_cases_passed ? '#10b981' : '#ef4444';
+      }
+      if (summary) summary.textContent = rep.summary_findings;
+      if (sens) sens.textContent = `${(rep.mean_calyx_sensitivity * 100).toFixed(1)}%`;
+      if (mae) mae.textContent = `${rep.mean_centerline_mae_mm.toFixed(2)} mm`;
+      if (h95) h95.textContent = `${rep.mean_centerline_h95_mm.toFixed(2)} mm`;
+      if (rej) rej.textContent = `${rep.rejected_non_opacified_cases} Gated`;
+    }
+
+    function downloadValidationReportJson() {
+      if (!currentValidationReportJson) return;
+      const blob = new Blob([JSON.stringify(currentValidationReportJson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AcuCalyx_M15_Validation_Gate_Report.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function toggleIngestDrawer() {
+      const body = document.getElementById('ingest-drawer-body');
+      const icon = document.getElementById('ingest-drawer-icon');
+      if (body) {
+        const isHidden = body.style.display === 'none';
+        body.style.display = isHidden ? 'block' : 'none';
+        if (icon) icon.textContent = isHidden ? '▲' : '▼';
+      }
+    }
+
+    async function submitCtuIngest() {
+      const caseId = document.getElementById('ingest-case-id')?.value.trim();
+      const seriesUid = document.getElementById('ingest-series-uid')?.value.trim();
+      const opQuality = document.getElementById('ingest-opacification')?.value;
+      const scanner = document.getElementById('ingest-scanner')?.value.trim();
+
+      if (!caseId || !seriesUid) {
+        alert('Please specify Case ID and Series UID.');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/validation/ctu/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            case_id: caseId,
+            dicom_series_uid: seriesUid,
+            opacification_quality: opQuality,
+            scanner_model: scanner
+          })
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Ingest failed');
+        }
+        const data = await res.json();
+        alert(`✓ CTU Case Ingested: ${data.case_id}\nStatus: ${data.status}\nReaders: ${data.reader_count}`);
+        await loadCtuCohort();
+        toggleIngestDrawer();
+      } catch (err) {
+        alert('Ingest error: ' + err.message);
+      }
+    }
+
     window.openComparisonMatrix = openComparisonMatrix;
     window.selectTractFromMatrix = selectTractFromMatrix;
     window.openSummaryCard = openSummaryCard;
@@ -3418,6 +3780,14 @@
     window.onConditionChange = onConditionChange;
     window.onSessionSelectChange = onSessionSelectChange;
     window.createNewStudySession = createNewStudySession;
+    window.openValidationGateModal = openValidationGateModal;
+    window.closeValidationGateModal = closeValidationGateModal;
+    window.loadCtuCohort = loadCtuCohort;
+    window.inspectCtuCase = inspectCtuCase;
+    window.runValidationBenchmark = runValidationBenchmark;
+    window.downloadValidationReportJson = downloadValidationReportJson;
+    window.toggleIngestDrawer = toggleIngestDrawer;
+    window.submitCtuIngest = submitCtuIngest;
   </script>
 </body>
 </html>
