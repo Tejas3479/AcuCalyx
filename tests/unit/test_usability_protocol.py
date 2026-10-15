@@ -315,7 +315,23 @@ def test_api_usability_session_lifecycle_and_trial_recording():
     assert t2_res.status_code == 200
     assert t2_res.json()["trials_in_session"] == 2
 
-    # 4. Fetch Formative Usability Report
+    # 4. List Sessions & Get Session Details
+    sessions_res = client.get("/api/usability/sessions")
+    assert sessions_res.status_code == 200
+    sess_list = sessions_res.json()
+    assert any(s["session_id"] == session_id for s in sess_list)
+
+    detail_res = client.get(f"/api/usability/sessions/{session_id}")
+    assert detail_res.status_code == 200
+    detail_data = detail_res.json()
+    assert detail_data["session_id"] == session_id
+    assert detail_data["trial_count"] == 2
+    assert len(detail_data["trials"]) == 2
+
+    # 404 on invalid session
+    assert client.get("/api/usability/sessions/NONEXISTENT_XYZ").status_code == 404
+
+    # 5. Fetch Formative Usability Report
     rep_res = client.get(f"/api/usability/sessions/{session_id}/report")
     assert rep_res.status_code == 200
     rep_data = rep_res.json()

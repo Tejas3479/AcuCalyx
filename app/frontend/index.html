@@ -119,6 +119,9 @@
       <button id="btn-provenance" class="btn" title="View Cryptographic SHA-256 Provenance">
         🔒 Audit
       </button>
+      <button id="btn-usability-study" class="btn" style="background: rgba(168, 85, 247, 0.15); border: 1px solid #a855f7; color: #c084fc; font-weight: 600;" onclick="openUsabilityStudyModal()" title="IEC 62366-1 Formative Usability Pilot Walkthrough">
+        🧪 Usability Study
+      </button>
     </div>
   </header>
 
@@ -1343,6 +1346,266 @@
       </div>
       <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
         <button class="btn btn-primary" onclick="document.getElementById('modal-keyframe-lightbox').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Milestone M14.5 / Horizon 2: Formative Usability Pilot Walkthrough Modal -->
+  <div id="modal-usability-study" class="modal-overlay" style="display: none; z-index: 1070;">
+    <div class="modal-content" style="width: 1180px; max-width: 96vw; max-height: 94vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #c084fc;">🧪 Formative Usability Pilot Walkthrough (IEC 62366-1:2015)</span>
+          <span class="version-pill" style="background: rgba(168, 85, 247, 0.15); color: #c084fc; font-weight: 600;">MILESTONE M14.5</span>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-sm" onclick="openDiscoveryGuideModal()" style="border-color: #6366f1; color: #a5b4fc;">📋 Discovery Guide</button>
+          <button class="btn btn-sm" onclick="openUsabilityReportModal()" style="border-color: #10b981; color: #6ee7b7;">📊 Cohort Report</button>
+          <button class="btn btn-sm" onclick="closeUsabilityStudyModal()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;">
+        <!-- Top Session & Participant Configuration Bar -->
+        <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 10px 14px; margin-bottom: 14px; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 12px; align-items: center;">
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Study Session:</label>
+            <div style="display: flex; gap: 6px;">
+              <select id="study-session-select" class="case-select" style="flex: 1; font-size: 11.5px;" onchange="onSessionSelectChange(this.value)">
+                <option value="SESS_PILOT_M14_5">SESS_PILOT_M14_5 (Active)</option>
+              </select>
+              <button class="btn btn-sm" onclick="createNewStudySession()" title="Start New Usability Session">➕ New</button>
+            </div>
+          </div>
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Participant ID:</label>
+            <input type="text" id="study-participant-id" class="text-input" value="SURGEON_01" style="width: 100%; font-size: 11.5px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+          </div>
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Clinical Role:</label>
+            <select id="study-participant-role" class="case-select" style="width: 100%; font-size: 11.5px;">
+              <option value="ATTENDING_ENDOUROLOGIST">Attending Endourologist</option>
+              <option value="ENDOUROLOGY_FELLOW">Endourology Fellow</option>
+              <option value="UROLOGY_RESIDENT">Urology Resident</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px; font-weight: 600;">Experience (Years):</label>
+            <input type="number" id="study-experience-years" class="text-input" value="10" min="0" max="40" style="width: 100%; font-size: 11.5px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+          </div>
+        </div>
+
+        <!-- Two-Column Formative Trial Grid -->
+        <div style="display: grid; grid-template-columns: 1fr 1.15fr; gap: 16px;">
+          <!-- Left Column: Trial Task, Stopwatch, Tract Selection -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- Condition & Scenario Box -->
+            <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+              <div style="font-size: 12px; font-weight: 700; color: var(--accent-cyan); margin-bottom: 10px;">1. Task Protocol & Evaluation Arm</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div>
+                  <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Challenge Scenario:</label>
+                  <select id="study-scenario-select" class="case-select" style="width: 100%; font-size: 11px;">
+                    <option value="SCENARIO_01_LOWER_POLE">S1: Lower Pole Solitary</option>
+                    <option value="SCENARIO_02_RETRORENAL_COLON">S2: Retrorenal Colon</option>
+                    <option value="SCENARIO_03_STAGHORN_INFUNDIBULUM">S3: Partial Staghorn</option>
+                    <option value="SCENARIO_04_SUPRACOSTAL_HIGH_KIDNEY">S4: Supracostal (High)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Condition Arm:</label>
+                  <select id="study-condition-select" class="case-select" style="width: 100%; font-size: 11px; font-weight: 600; color: #38bdf8;" onchange="onConditionChange(this.value)">
+                    <option value="ACUCALYX_WORKBENCH">✨ AcuCalyx Workbench</option>
+                    <option value="CONVENTIONAL_BASELINE">📋 Conventional Baseline (CT MPR)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Live Task Stopwatch -->
+              <div style="background: #080c14; border: 1px solid #1e293b; border-radius: 6px; padding: 10px 14px; text-align: center; margin-top: 8px;">
+                <div style="font-size: 10.5px; text-transform: uppercase; color: var(--text-secondary); letter-spacing: 0.5px;">Task Execution Stopwatch (IEC 62366-1)</div>
+                <div id="study-timer-display" style="font-size: 26px; font-family: var(--font-mono, monospace); font-weight: 800; color: #10b981; margin: 4px 0;">00:00.0</div>
+                <div style="display: flex; justify-content: center; gap: 8px;">
+                  <button id="btn-timer-start" class="btn btn-sm btn-primary" onclick="startStudyTimer()">▶ Start</button>
+                  <button id="btn-timer-pause" class="btn btn-sm" onclick="pauseStudyTimer()">⏸ Pause</button>
+                  <button id="btn-timer-reset" class="btn btn-sm" onclick="resetStudyTimer()">↺ Reset</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tract Decision & Interlocks -->
+            <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+              <div style="font-size: 12px; font-weight: 700; color: #10b981; margin-bottom: 10px;">2. Tract Decision & Acceptance</div>
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div>
+                  <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Selected Candidate Tract:</label>
+                  <input type="text" id="study-cand-id" class="text-input" value="CAND_01" style="width: 100%; font-size: 11.5px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+                </div>
+                <div>
+                  <label style="font-size: 10.5px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Target Calyx:</label>
+                  <input type="text" id="study-calyx-name" class="text-input" value="POSTERIOR_LOWER" style="width: 100%; font-size: 11.5px; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);">
+                </div>
+              </div>
+
+              <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="study-accept-proposal" checked style="accent-color: #10b981;">
+                  <span>Surgeon accepted automated candidate proposal without major re-pointing</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" id="study-clinician-override" onchange="document.getElementById('study-override-box').style.display = this.checked ? 'block' : 'none';" style="accent-color: #f59e0b;">
+                  <span>Clinician applied manual trajectory override</span>
+                </label>
+                <div id="study-override-box" style="display: none; margin-top: 4px;">
+                  <textarea id="study-override-rationale" placeholder="Clinical rationale for override (e.g. avoided anterior calyx due to rotational torque preference)..." style="width: 100%; height: 50px; font-size: 10.5px; padding: 6px; border-radius: 4px; border: 1px solid var(--border-color); background: #0b0e14; color: var(--text-primary);"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- Critical Errors Observed Checklist -->
+            <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: #ef4444;">3. Observed Use Errors Checklist</span>
+                <span style="font-size: 9.5px; color: var(--text-secondary);">IEC 62366-1 Safety Interlock Observation</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 11px;">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="study-crit-err" value="C1_COLON_MARGIN_BREACH">
+                  <span><strong>C1: Colon Clearance Breach</strong> (Corridor &lt; 15mm from retrorenal colon)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="study-crit-err" value="C2_PLEURAL_VIOLATION">
+                  <span><strong>C2: Pleural Violation Risk</strong> (Supracostal tract &lt; 10mm from parietal pleura)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="study-crit-err" value="C3_NON_PAPILLARY_ENTRY">
+                  <span><strong>C3: Non-Papillary Entry</strong> (Direct entry via infundibular neck / vascular zone)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                  <input type="checkbox" class="study-crit-err" value="C4_TRANSPOSITION_SUSPECTED">
+                  <span><strong>C4: C-Arm Angle Transposition</strong> (Technologist swapped Primary / Secondary)</span>
+                </label>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Column: NASA-TLX & SUS Instrument -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <!-- NASA-TLX RTLX Cognitive Workload Panel -->
+            <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: #38bdf8;">4. NASA-TLX Cognitive Workload (RTLX 0–100)</span>
+                <span id="study-tlx-composite-badge" class="version-pill" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8; font-weight: 700;">Raw TLX: 17.5</span>
+              </div>
+              <div style="display: grid; grid-template-columns: 1fr; gap: 8px; font-size: 10.5px;">
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Mental Demand (thinking, deciding, searching):</span>
+                    <strong id="val-tlx-mental">20</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-mental" min="0" max="100" value="20" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Physical Demand (view manipulation, clicking):</span>
+                    <strong id="val-tlx-physical">15</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-physical" min="0" max="100" value="15" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Temporal Demand (time pressure, pace):</span>
+                    <strong id="val-tlx-temporal">15</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-temporal" min="0" max="100" value="15" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Performance (0 = Successful/Satisfied, 100 = Poor/Failure):</span>
+                    <strong id="val-tlx-performance">10</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-performance" min="0" max="100" value="10" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Effort (how hard surgeon worked to accomplish):</span>
+                    <strong id="val-tlx-effort">25</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-effort" min="0" max="100" value="25" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+                <div>
+                  <div style="display: flex; justify-content: space-between;">
+                    <span>Frustration Level (irritated, stressed, discouraged):</span>
+                    <strong id="val-tlx-frustration">20</strong>
+                  </div>
+                  <input type="range" id="slider-tlx-frustration" min="0" max="100" value="20" style="width: 100%; accent-color: #38bdf8;" oninput="updateTlxScores()">
+                </div>
+              </div>
+            </div>
+
+            <!-- System Usability Scale (SUS) 10-Item Instrument -->
+            <div id="study-sus-panel" style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <span style="font-size: 12px; font-weight: 700; color: #a855f7;">5. System Usability Scale (SUS 10-Item)</span>
+                <span id="study-sus-score-badge" class="version-pill" style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-weight: 700;">SUS: 87.5 (EXCELLENT)</span>
+              </div>
+              <div style="font-size: 10px; color: var(--text-secondary); margin-bottom: 6px;">1 = Strongly Disagree • 3 = Neutral • 5 = Strongly Agree</div>
+              <div id="study-sus-items-container" style="display: flex; flex-direction: column; gap: 6px; font-size: 10.5px; max-height: 220px; overflow-y: auto; padding-right: 4px;">
+                <!-- 10 Likert items dynamically generated -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Trials in active session: <strong id="study-trials-count" style="color: var(--accent-cyan);">0</strong></span>
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-primary" onclick="submitStudyTrial()" style="background: #a855f7; border-color: #9333ea;">
+            💾 Record Usability Trial
+          </button>
+          <button class="btn" onclick="closeUsabilityStudyModal()">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Usability Analytics Report Modal -->
+  <div id="modal-usability-report" class="modal-overlay" style="display: none; z-index: 1080;">
+    <div class="modal-content" style="width: 950px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #10b981;">📊 IEC 62366-1 Formative Usability Analytics Report</span>
+          <span id="rep-session-badge" class="version-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981; font-weight: 600;">SESSION REPORT</span>
+        </div>
+        <button class="btn btn-sm" onclick="document.getElementById('modal-usability-report').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;" id="usability-report-content">
+        <!-- Injected via renderUsabilityReport() -->
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+        <button class="btn btn-sm" onclick="downloadUsabilityReportJson()">⬇️ Export JSON Report</button>
+        <button class="btn btn-primary" onclick="document.getElementById('modal-usability-report').style.display='none'">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Surgeon Discovery Guide Modal -->
+  <div id="modal-discovery-guide" class="modal-overlay" style="display: none; z-index: 1080;">
+    <div class="modal-content" style="width: 900px; max-width: 95vw; max-height: 92vh; display: flex; flex-direction: column;">
+      <div class="modal-header" style="flex-shrink: 0; border-bottom: 1px solid var(--border-color); padding-bottom: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 15px; font-weight: 700; color: #6366f1;">📋 Milestone M14.5: Surgeon Discovery Interview Protocol</span>
+          <span class="version-pill" style="background: rgba(99, 102, 241, 0.15); color: #a5b4fc; font-weight: 600;">IEC 62366-1 FORMATIVE</span>
+        </div>
+        <button class="btn btn-sm" onclick="document.getElementById('modal-discovery-guide').style.display='none'">✕</button>
+      </div>
+      <div class="modal-body" style="overflow-y: auto; flex: 1; padding: 14px 18px;" id="discovery-guide-content">
+        <!-- Injected via renderDiscoveryGuide() -->
+      </div>
+      <div class="modal-footer" style="flex-shrink: 0; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 10px;">
+        <a class="btn btn-primary" href="/api/usability/discovery/interview-guide/markdown" target="_blank" download="AcuCalyx_M14_5_Surgeon_Discovery_Guide.md" style="text-decoration: none;">
+          ⬇️ Download Printable Markdown Worksheet
+        </a>
+        <button class="btn" onclick="document.getElementById('modal-discovery-guide').style.display='none'">Close</button>
       </div>
     </div>
   </div>
@@ -2688,10 +2951,473 @@
       window.print();
     }
 
+    // =========================================================================
+    // Milestone M14.5 / Horizon 2: Formative Usability Pilot Walkthrough Logic
+    // =========================================================================
+    const SUS_QUESTIONS = [
+      "1. I think that I would like to use this system frequently.",
+      "2. I found the system unnecessarily complex.",
+      "3. I thought the system was easy to use.",
+      "4. I think that I would need the support of a technical person to be able to use this system.",
+      "5. I found the various functions in this system were well integrated.",
+      "6. I thought there was too much inconsistency in this system.",
+      "7. I would imagine that most people would learn to use this system very quickly.",
+      "8. I found the system very cumbersome to use.",
+      "9. I felt very confident using the system.",
+      "10. I needed to learn a lot of things before I could get going with this system."
+    ];
+    const DEFAULT_SUS_RESPONSES = [5, 1, 5, 2, 5, 1, 5, 1, 5, 2];
+
+    let studyTimerInterval = null;
+    let studyTimerStartTime = null;
+    let studyTimerElapsed = 0;
+    let taskStartTimeIso = null;
+    let taskEndTimeIso = null;
+    let currentReportJson = null;
+
+    function initSusItems() {
+      const container = document.getElementById('study-sus-items-container');
+      if (!container || container.children.length > 0) return;
+      SUS_QUESTIONS.forEach((q, idx) => {
+        const defVal = DEFAULT_SUS_RESPONSES[idx];
+        const row = document.createElement('div');
+        row.style.cssText = 'padding: 4px 6px; background: #0b0e14; border-radius: 4px; border: 1px solid #1e293b; display: flex; justify-content: space-between; align-items: center;';
+        
+        let radios = '';
+        for (let r = 1; r <= 5; r++) {
+          radios += `
+            <label style="margin-left: 6px; font-size: 10px; cursor: pointer; color: ${r === defVal ? '#c084fc' : '#94a3b8'};">
+              <input type="radio" name="sus-q-${idx}" value="${r}" ${r === defVal ? 'checked' : ''} onchange="updateSusScores()" style="margin-right: 2px; accent-color: #a855f7;">${r}
+            </label>
+          `;
+        }
+        row.innerHTML = `
+          <span style="font-size: 10.5px; color: var(--text-primary); flex: 1; padding-right: 8px;">${q}</span>
+          <div style="display: flex; align-items: center; flex-shrink: 0;">${radios}</div>
+        `;
+        container.appendChild(row);
+      });
+    }
+
+    function updateTlxScores() {
+      const m = parseFloat(document.getElementById('slider-tlx-mental')?.value || '20');
+      const p = parseFloat(document.getElementById('slider-tlx-physical')?.value || '15');
+      const t = parseFloat(document.getElementById('slider-tlx-temporal')?.value || '15');
+      const perf = parseFloat(document.getElementById('slider-tlx-performance')?.value || '10');
+      const e = parseFloat(document.getElementById('slider-tlx-effort')?.value || '25');
+      const f = parseFloat(document.getElementById('slider-tlx-frustration')?.value || '20');
+
+      if (document.getElementById('val-tlx-mental')) document.getElementById('val-tlx-mental').textContent = m;
+      if (document.getElementById('val-tlx-physical')) document.getElementById('val-tlx-physical').textContent = p;
+      if (document.getElementById('val-tlx-temporal')) document.getElementById('val-tlx-temporal').textContent = t;
+      if (document.getElementById('val-tlx-performance')) document.getElementById('val-tlx-performance').textContent = perf;
+      if (document.getElementById('val-tlx-effort')) document.getElementById('val-tlx-effort').textContent = e;
+      if (document.getElementById('val-tlx-frustration')) document.getElementById('val-tlx-frustration').textContent = f;
+
+      const rawTlx = (m + p + t + perf + e + f) / 6.0;
+      const badge = document.getElementById('study-tlx-composite-badge');
+      if (badge) {
+        let level = 'LOW';
+        if (rawTlx > 50) level = 'HIGH';
+        else if (rawTlx > 30) level = 'MODERATE';
+        badge.textContent = `Raw TLX: ${rawTlx.toFixed(1)} (${level})`;
+      }
+    }
+
+    function updateSusScores() {
+      let scoreSum = 0;
+      for (let i = 0; i < 10; i++) {
+        const val = parseInt(document.querySelector(`input[name="sus-q-${i}"]:checked`)?.value || '3');
+        if (i % 2 === 0) {
+          scoreSum += (val - 1);
+        } else {
+          scoreSum += (5 - val);
+        }
+      }
+      const susScore = scoreSum * 2.5;
+      let adjective = 'ACCEPTABLE';
+      if (susScore >= 85) adjective = 'EXCELLENT';
+      else if (susScore >= 80) adjective = 'HIGH_USABILITY';
+      else if (susScore >= 68) adjective = 'ACCEPTABLE';
+      else if (susScore >= 51) adjective = 'MARGINAL';
+      else adjective = 'UNACCEPTABLE';
+
+      const badge = document.getElementById('study-sus-score-badge');
+      if (badge) {
+        badge.textContent = `SUS: ${susScore.toFixed(1)} (${adjective})`;
+      }
+    }
+
+    function startStudyTimer() {
+      if (studyTimerInterval) return;
+      if (!taskStartTimeIso) taskStartTimeIso = new Date().toISOString();
+      studyTimerStartTime = Date.now() - studyTimerElapsed;
+      studyTimerInterval = setInterval(() => {
+        studyTimerElapsed = Date.now() - studyTimerStartTime;
+        const totalSec = studyTimerElapsed / 1000;
+        const mins = Math.floor(totalSec / 60);
+        const secs = (totalSec % 60).toFixed(1);
+        const disp = document.getElementById('study-timer-display');
+        if (disp) {
+          disp.textContent = `${String(mins).padStart(2, '0')}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+      }, 100);
+    }
+
+    function pauseStudyTimer() {
+      if (studyTimerInterval) {
+        clearInterval(studyTimerInterval);
+        studyTimerInterval = null;
+        taskEndTimeIso = new Date().toISOString();
+      }
+    }
+
+    function resetStudyTimer() {
+      pauseStudyTimer();
+      studyTimerElapsed = 0;
+      taskStartTimeIso = null;
+      taskEndTimeIso = null;
+      const disp = document.getElementById('study-timer-display');
+      if (disp) disp.textContent = '00:00.0';
+    }
+
+    async function loadStudySessionsList() {
+      try {
+        const res = await fetch('/api/usability/sessions');
+        if (!res.ok) return;
+        const sessions = await res.json();
+        const sel = document.getElementById('study-session-select');
+        if (!sel) return;
+        sel.innerHTML = '';
+        if (sessions.length === 0) {
+          sel.innerHTML = '<option value="SESS_PILOT_M14_5">SESS_PILOT_M14_5 (Auto)</option>';
+          return;
+        }
+        sessions.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.session_id;
+          opt.textContent = `${s.session_id} (${s.trial_count} trials)`;
+          sel.appendChild(opt);
+        });
+        onSessionSelectChange(sel.value);
+      } catch (err) {
+        console.warn('Could not load usability sessions:', err);
+      }
+    }
+
+    async function onSessionSelectChange(sessionId) {
+      if (!sessionId) return;
+      try {
+        const res = await fetch(`/api/usability/sessions/${sessionId}`);
+        if (res.ok) {
+          const data = await res.json();
+          const countEl = document.getElementById('study-trials-count');
+          if (countEl) countEl.textContent = data.trial_count || (data.trials ? data.trials.length : 0);
+        }
+      } catch (e) {
+        // Fallback
+      }
+    }
+
+    async function createNewStudySession() {
+      const name = prompt('Enter new Usability Session ID:', `SESS_${new Date().toISOString().slice(0,10).replace(/-/g,'')}_SURGEON`);
+      if (!name) return;
+      try {
+        const res = await fetch('/api/usability/sessions/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: name, investigator_id: 'Lead_Investigator' })
+        });
+        if (res.ok) {
+          alert(`Created Usability Session: ${name}`);
+          await loadStudySessionsList();
+          document.getElementById('study-session-select').value = name;
+          onSessionSelectChange(name);
+        }
+      } catch (err) {
+        alert('Error creating session: ' + err.message);
+      }
+    }
+
+    function onConditionChange(cond) {
+      const isAcuc = (cond === 'ACUCALYX_WORKBENCH');
+      const susPanel = document.getElementById('study-sus-panel');
+      if (susPanel) {
+        susPanel.style.opacity = isAcuc ? '1.0' : '0.4';
+        susPanel.style.pointerEvents = isAcuc ? 'auto' : 'none';
+      }
+    }
+
+    async function openUsabilityStudyModal() {
+      const modal = document.getElementById('modal-usability-study');
+      if (!modal) return;
+      modal.style.display = 'flex';
+      initSusItems();
+      updateTlxScores();
+      updateSusScores();
+      await loadStudySessionsList();
+
+      // Prepopulate candidate and calyx from cockpit
+      if (selectedCandidateId) {
+        const candInput = document.getElementById('study-cand-id');
+        if (candInput) candInput.value = selectedCandidateId;
+        const cand = currentCandidates.find(c => c.candidate_id === selectedCandidateId);
+        if (cand && document.getElementById('study-calyx-name')) {
+          document.getElementById('study-calyx-name').value = cand.target_calyx || cand.target_calyx_name || 'POSTERIOR_LOWER';
+        }
+      }
+
+      // Prepopulate scenario if loaded
+      if (currentCaseMeta?.scenario_id && document.getElementById('study-scenario-select')) {
+        document.getElementById('study-scenario-select').value = currentCaseMeta.scenario_id;
+      }
+    }
+
+    function closeUsabilityStudyModal() {
+      const modal = document.getElementById('modal-usability-study');
+      if (modal) modal.style.display = 'none';
+    }
+
+    async function submitStudyTrial() {
+      const sessionId = document.getElementById('study-session-select')?.value || 'SESS_PILOT_M14_5';
+      const participantId = document.getElementById('study-participant-id')?.value.trim() || 'SURGEON_01';
+      const participantRole = document.getElementById('study-participant-role')?.value || 'ATTENDING_ENDOUROLOGIST';
+      const experienceYears = parseInt(document.getElementById('study-experience-years')?.value) || 10;
+      const scenarioId = document.getElementById('study-scenario-select')?.value || 'SCENARIO_01_LOWER_POLE';
+      const condition = document.getElementById('study-condition-select')?.value || 'ACUCALYX_WORKBENCH';
+
+      if (!sessionId || !participantId) {
+        alert('Please specify Session ID and Participant ID.');
+        return;
+      }
+
+      pauseStudyTimer();
+      const durationSec = Math.max(1.0, studyTimerElapsed / 1000);
+      const nowIso = new Date().toISOString();
+      const startTime = taskStartTimeIso || new Date(Date.now() - studyTimerElapsed).toISOString();
+      const endTime = taskEndTimeIso || nowIso;
+
+      const candId = document.getElementById('study-cand-id')?.value.trim() || 'CAND_01';
+      const calyxName = document.getElementById('study-calyx-name')?.value.trim() || 'POSTERIOR_LOWER';
+      const acceptProposal = document.getElementById('study-accept-proposal')?.checked ?? true;
+      const clinicianOverride = document.getElementById('study-clinician-override')?.checked ?? false;
+      const overrideRationale = document.getElementById('study-override-rationale')?.value.trim();
+
+      // Observed critical errors
+      const errCheckboxes = document.querySelectorAll('.study-crit-err:checked');
+      const criticalErrors = Array.from(errCheckboxes).map(cb => cb.value);
+
+      // NASA-TLX
+      const nasaTlx = {
+        mental_demand: parseFloat(document.getElementById('slider-tlx-mental')?.value || '20'),
+        physical_demand: parseFloat(document.getElementById('slider-tlx-physical')?.value || '15'),
+        temporal_demand: parseFloat(document.getElementById('slider-tlx-temporal')?.value || '15'),
+        performance: parseFloat(document.getElementById('slider-tlx-performance')?.value || '10'),
+        effort: parseFloat(document.getElementById('slider-tlx-effort')?.value || '25'),
+        frustration: parseFloat(document.getElementById('slider-tlx-frustration')?.value || '20')
+      };
+
+      // SUS responses (AcuCalyx condition)
+      let susResponses = null;
+      if (condition === 'ACUCALYX_WORKBENCH') {
+        susResponses = [];
+        for (let i = 0; i < 10; i++) {
+          const val = parseInt(document.querySelector(`input[name="sus-q-${i}"]:checked`)?.value || '3');
+          susResponses.push(val);
+        }
+      }
+
+      const payload = {
+        participant_id: participantId,
+        participant_role: participantRole,
+        experience_years: experienceYears,
+        scenario_id: scenarioId,
+        condition: condition,
+        task_start_time: startTime,
+        task_end_time: endTime,
+        task_duration_seconds: durationSec,
+        selected_candidate_id: candId,
+        selected_calyx_name: calyxName,
+        accepted_automated_proposal: acceptProposal,
+        clinician_override_applied: clinicianOverride,
+        override_rationale: overrideRationale || null,
+        critical_errors_observed: criticalErrors,
+        nasa_tlx: nasaTlx,
+        sus_responses: susResponses
+      };
+
+      try {
+        const res = await fetch(`/api/usability/sessions/${sessionId}/trials`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Could not record trial');
+        }
+        const data = await res.json();
+        alert(`🎯 Trial Recorded Successfully (${data.trial_id})!\n\nSession: ${sessionId}\nTotal Trials Recorded: ${data.trials_in_session}`);
+        document.getElementById('study-trials-count').textContent = data.trials_in_session;
+        resetStudyTimer();
+      } catch (err) {
+        alert('Error submitting trial: ' + err.message);
+      }
+    }
+
+    async function openUsabilityReportModal() {
+      const sessionId = document.getElementById('study-session-select')?.value || 'SESS_PILOT_M14_5';
+      try {
+        const res = await fetch(`/api/usability/sessions/${sessionId}/report`);
+        if (!res.ok) {
+          const err = await res.json();
+          alert(`No trials found for session '${sessionId}' yet. Please record at least one trial first.`);
+          return;
+        }
+        const rep = await res.json();
+        currentReportJson = rep;
+        renderUsabilityReport(rep);
+        document.getElementById('modal-usability-report').style.display = 'flex';
+      } catch (err) {
+        alert('Error loading report: ' + err.message);
+      }
+    }
+
+    function renderUsabilityReport(rep) {
+      const container = document.getElementById('usability-report-content');
+      document.getElementById('rep-session-badge').textContent = `SESSION: ${rep.session_id}`;
+
+      const timeRed = rep.task_duration_seconds?.reduction_percent ?? 0;
+      const meanBase = rep.task_duration_seconds?.mean_baseline ?? 0;
+      const meanAcuc = rep.task_duration_seconds?.mean_acucalyx ?? 0;
+
+      const susScore = rep.sus_analysis ? rep.sus_analysis.mean_sus?.toFixed(1) : 'N/A';
+      const susPct80 = rep.sus_analysis ? (rep.sus_analysis.proportion_meeting_80_benchmark * 100).toFixed(0) + '%' : 'N/A';
+
+      const errElim = rep.critical_errors_observed?.error_elimination_rate_pct ?? 100;
+      const acceptPct = rep.acceptance_metrics?.acceptance_rate_pct ?? 0;
+      const workload = rep.workload_analysis;
+
+      container.innerHTML = `
+        <!-- Top 4 Summary Metric Cards -->
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;">
+          <div style="background: #0b0e14; border: 1px solid #10b981; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Task Duration Delta</div>
+            <div style="font-size: 22px; font-weight: 800; color: #10b981; margin: 4px 0;">-${timeRed}%</div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Baseline: ${meanBase}s → AcuCalyx: ${meanAcuc}s</div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #38bdf8; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Cognitive Workload</div>
+            <div style="font-size: 22px; font-weight: 800; color: #38bdf8; margin: 4px 0;">
+              ${workload ? `-${Math.abs(workload.mean_difference).toFixed(1)}` : 'N/A'}
+            </div>
+            <div style="font-size: 10px; color: var(--text-secondary);">
+              ${workload ? `p=${workload.p_value?.toFixed(3)}, d=${workload.cohens_d?.toFixed(2)}` : 'Paired TLX reduction'}
+            </div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #a855f7; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">System Usability (SUS)</div>
+            <div style="font-size: 22px; font-weight: 800; color: #c084fc; margin: 4px 0;">${susScore}</div>
+            <div style="font-size: 10px; color: var(--text-secondary);">${susPct80} ≥ 80 benchmark</div>
+          </div>
+          <div style="background: #0b0e14; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; text-align: center;">
+            <div style="font-size: 11px; color: var(--text-secondary); text-transform: uppercase;">Safety & Acceptance</div>
+            <div style="font-size: 22px; font-weight: 800; color: #f59e0b; margin: 4px 0;">${errElim}% / ${acceptPct}%</div>
+            <div style="font-size: 10px; color: var(--text-secondary);">Error Elimination / Tract Accept</div>
+          </div>
+        </div>
+
+        <!-- Trial Breakdown Details -->
+        <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 14px;">
+          <div style="font-size: 12px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">IEC 62366-1 Formative Trial Breakdown</div>
+          <div style="font-size: 11px; color: var(--text-secondary); line-height: 1.6;">
+            <div><strong>Total Evaluated Trials:</strong> ${rep.total_trials} (Baseline: ${rep.baseline_trial_count}, AcuCalyx: ${rep.acucalyx_trial_count})</div>
+            <div><strong>Investigator:</strong> ${rep.investigator_id}</div>
+            <div><strong>Critical Use Errors Observed:</strong> Baseline: ${rep.critical_errors_observed?.baseline_total ?? 0} | AcuCalyx: ${rep.critical_errors_observed?.acucalyx_total ?? 0}</div>
+            <div><strong>Automated Proposal Acceptance:</strong> ${rep.acceptance_metrics?.accepted_count ?? 0} accepted, ${rep.acceptance_metrics?.override_count ?? 0} overrides (${acceptPct}% acceptance)</div>
+          </div>
+        </div>
+      `;
+    }
+
+    function downloadUsabilityReportJson() {
+      if (!currentReportJson) return;
+      const blob = new Blob([JSON.stringify(currentReportJson, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `AcuCalyx_${currentReportJson.session_id || 'Usability'}_Report.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    async function openDiscoveryGuideModal() {
+      const modal = document.getElementById('modal-discovery-guide');
+      const container = document.getElementById('discovery-guide-content');
+      container.innerHTML = '<div style="text-align: center; padding: 40px; color: var(--text-secondary);">⏳ Loading discovery protocol schema...</div>';
+      modal.style.display = 'flex';
+      try {
+        const res = await fetch('/api/usability/discovery/interview-guide');
+        if (!res.ok) throw new Error('Could not load interview guide');
+        const guide = await res.json();
+        renderDiscoveryGuide(guide);
+      } catch (err) {
+        container.innerHTML = `<div style="color: #ef4444; padding: 20px;">Error loading guide: ${err.message}</div>`;
+      }
+    }
+
+    function renderDiscoveryGuide(guide) {
+      const container = document.getElementById('discovery-guide-content');
+      let html = `<div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 14px;">Version: <strong>${guide.version}</strong> • Objective: <strong>${guide.objective}</strong></div>`;
+      (guide.sections || []).forEach(sec => {
+        html += `
+          <div style="background: var(--bg-surface-elevated, #131b2e); border: 1px solid var(--border-color); border-radius: 6px; padding: 12px; margin-bottom: 12px;">
+            <div style="font-size: 13px; font-weight: 700; color: #a5b4fc; margin-bottom: 6px;">${sec.title}</div>
+            ${sec.description ? `<div style="font-size: 11px; color: var(--text-secondary); margin-bottom: 8px;">${sec.description}</div>` : ''}
+        `;
+        if (sec.questions) {
+          sec.questions.forEach(q => {
+            html += `
+              <div style="margin-top: 8px; padding-left: 8px; border-left: 2px solid #6366f1;">
+                <div style="font-size: 11.5px; font-weight: 600; color: var(--text-primary);">${q.text}</div>
+                <div style="font-size: 10.5px; color: var(--text-secondary); margin-top: 2px;">Options: ${q.options ? q.options.join(' • ') : 'Open response'}</div>
+              </div>
+            `;
+          });
+        }
+        if (sec.dimensions) {
+          sec.dimensions.forEach(d => {
+            html += `
+              <div style="margin-top: 8px; padding-left: 8px; border-left: 2px solid #10b981;">
+                <div style="font-size: 11.5px; font-weight: 600; color: #38bdf8;">${d.label}</div>
+                <div style="font-size: 10.5px; color: var(--text-secondary);">${d.description}</div>
+              </div>
+            `;
+          });
+        }
+        html += `</div>`;
+      });
+      container.innerHTML = html;
+    }
+
     window.openComparisonMatrix = openComparisonMatrix;
     window.selectTractFromMatrix = selectTractFromMatrix;
     window.openSummaryCard = openSummaryCard;
     window.printSummaryCard = printSummaryCard;
+    window.openUsabilityStudyModal = openUsabilityStudyModal;
+    window.closeUsabilityStudyModal = closeUsabilityStudyModal;
+    window.startStudyTimer = startStudyTimer;
+    window.pauseStudyTimer = pauseStudyTimer;
+    window.resetStudyTimer = resetStudyTimer;
+    window.updateTlxScores = updateTlxScores;
+    window.updateSusScores = updateSusScores;
+    window.submitStudyTrial = submitStudyTrial;
+    window.openUsabilityReportModal = openUsabilityReportModal;
+    window.openDiscoveryGuideModal = openDiscoveryGuideModal;
+    window.downloadUsabilityReportJson = downloadUsabilityReportJson;
+    window.onConditionChange = onConditionChange;
+    window.onSessionSelectChange = onSessionSelectChange;
+    window.createNewStudySession = createNewStudySession;
   </script>
 </body>
 </html>

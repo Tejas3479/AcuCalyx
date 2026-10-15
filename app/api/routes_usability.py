@@ -600,6 +600,97 @@ def get_surgeon_discovery_markdown():
     return Response(content=md, media_type="text/markdown")
 
 
+def _load_session(session_id: str) -> Optional[UsabilityStudySession]:
+    """Loads a usability study session from in-memory cache or persisted JSON on disk."""
+    if session_id in _ACTIVE_SESSIONS:
+        return _ACTIVE_SESSIONS[session_id]
+    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+    if not session_file.is_file():
+        return None
+    try:
+        with open(session_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        session = UsabilityStudySession(
+            session_id=session_id,
+            investigator_id=data.get("investigator_id", "UNKNOWN")
+        )
+        if "created_at" in data:
+            session.created_at = data["created_at"]
+        for t_dict in data.get("trials", []):
+            tlx_dict = t_dict.get("nasa_tlx")
+            tlx = (
+                NasaTlxRtlxAssessment(
+                    participant_id=t_dict["participant_id"],
+                    condition_id=t_dict["condition"],
+                    mental_demand=float(tlx_dict["mental_demand"]),
+                    physical_demand=float(tlx_dict["physical_demand"]),
+                    temporal_demand=float(tlx_dict["temporal_demand"]),
+                    performance=float(tlx_dict["performance"]),
+                    effort=float(tlx_dict["effort"]),
+                    frustration=float(tlx_dict["frustration"])
+                )
+                if tlx_dict else None
+            )
+            sus_dict = t_dict.get("sus")
+            sus = (
+                SystemUsabilityScaleAssessment(
+                    participant_id=t_dict["participant_id"],
+                    item_responses=sus_dict["item_responses"]
+                )
+                if sus_dict and "item_responses" in sus_dict else None
+            )
+            role_val = t_dict.get("participant_role", ClinicianRole.ATTENDING_ENDOUROLOGIST.value)
+            role = ClinicianRole(role_val) if role_val in [e.value for e in ClinicianRole] else ClinicianRole.ATTENDING_ENDOUROLOGIST
+            cond_val = t_dict.get("condition", UsabilityCondition.ACUCALYX_WORKBENCH.value)
+            cond = UsabilityCondition(cond_val) if cond_val in [e.value for e in UsabilityCondition] else UsabilityCondition.ACUCALYX_WORKBENCH
+
+            session.record_trial(UsabilityTrialRecord(
+                trial_id=t_dict["trial_id"],
+                session_id=session_id,
+                participant_id=t_dict["participant_id"],
+                participant_role=role,
+                experience_years=int(t_dict.get("experience_years", 5)),
+                scenario_id=t_dict["scenario_id"],
+                condition=cond,
+                task_start_time=t_dict["task_start_time"],
+                task_end_time=t_dict["task_end_time"],
+                task_duration_seconds=float(t_dict["task_duration_seconds"]),
+                selected_candidate_id=t_dict["selected_candidate_id"],
+                selected_calyx_name=t_dict["selected_calyx_name"],
+                accepted_automated_proposal=bool(t_dict.get("accepted_automated_proposal", True)),
+                clinician_override_applied=bool(t_dict.get("clinician_override_applied", False)),
+                override_type=t_dict.get("override_type"),
+                override_rationale=t_dict.get("override_rationale"),
+                critical_errors_observed=t_dict.get("critical_errors_observed", []),
+                nasa_tlx=tlx,
+                sus=sus
+            ))
+        _ACTIVE_SESSIONS[session_id] = session
+        return session
+    except Exception:
+        return None
+
+
+@router.get("/sessions")
+def list_usability_sessions():
+    """Returns a list of saved usability testing sessions and basic metadata."""
+    sessions = []
+    if USABILITY_SESSIONS_DIR.is_dir():
+        for f in sorted(USABILITY_SESSIONS_DIR.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+            try:
+                with open(f, "r", encoding="utf-8") as fp:
+                    data = json.load(fp)
+                    sessions.append({
+                        "session_id": data.get("session_id", f.stem),
+                        "investigator_id": data.get("investigator_id", "Unknown"),
+                        "created_at": data.get("created_at", ""),
+                        "trial_count": len(data.get("trials", []))
+                    })
+            except Exception:
+                continue
+    return sessions
+
+
 @router.post("/sessions/start")
 def start_usability_session(request: StartSessionRequest):
     """Initializes a new formative usability testing session."""
@@ -629,24 +720,28 @@ def start_usability_session(request: StartSessionRequest):
     }
 
 
+@router.get("/sessions/{session_id}")
+def get_usability_session(session_id: str):
+    """Retrieves session record with individual trials."""
+    session = _load_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail=f"Usability session '{session_id}' not found.")
+    return {
+        "session_id": session.session_id,
+        "investigator_id": session.investigator_id,
+        "created_at": session.created_at,
+        "trial_count": len(session.trials),
+        "trials": [t.to_dict() for t in session.trials]
+    }
+
+
 @router.post("/sessions/{session_id}/trials")
 def submit_usability_trial(session_id: str, request: UsabilityTrialSubmissionRequest):
     """Records an individual trial evaluation record within an active usability session."""
-    session = _ACTIVE_SESSIONS.get(session_id)
+    session = _load_session(session_id)
     if not session:
-        # Try loading from disk
-        session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
-        if session_file.is_file():
-            with open(session_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            session = UsabilityStudySession(
-                session_id=session_id,
-                investigator_id=data.get("investigator_id", "UNKNOWN")
-            )
-            _ACTIVE_SESSIONS[session_id] = session
-        else:
-            session = UsabilityStudySession(session_id=session_id, investigator_id="AUTO_INIT")
-            _ACTIVE_SESSIONS[session_id] = session
+        session = UsabilityStudySession(session_id=session_id, investigator_id="AUTO_INIT")
+        _ACTIVE_SESSIONS[session_id] = session
 
     trial_id = request.trial_id or f"TRIAL_{datetime.now().strftime('%H%M%S_%f')}"
 
@@ -717,61 +812,7 @@ def submit_usability_trial(session_id: str, request: UsabilityTrialSubmissionReq
 @router.get("/sessions/{session_id}/report")
 def get_usability_session_report(session_id: str):
     """Compiles and exports the complete IEC 62366-1 Formative Usability Report."""
-    session = _ACTIVE_SESSIONS.get(session_id)
+    session = _load_session(session_id)
     if not session:
-        session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
-        if not session_file.is_file():
-            raise HTTPException(status_code=404, detail=f"Usability session '{session_id}' not found.")
-        with open(session_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        session = UsabilityStudySession(
-            session_id=session_id,
-            investigator_id=data.get("investigator_id", "UNKNOWN")
-        )
-        for t_dict in data.get("trials", []):
-            tlx_dict = t_dict.get("nasa_tlx")
-            tlx = (
-                NasaTlxRtlxAssessment(
-                    participant_id=t_dict["participant_id"],
-                    condition_id=t_dict["condition"],
-                    mental_demand=tlx_dict["mental_demand"],
-                    physical_demand=tlx_dict["physical_demand"],
-                    temporal_demand=tlx_dict["temporal_demand"],
-                    performance=tlx_dict["performance"],
-                    effort=tlx_dict["effort"],
-                    frustration=tlx_dict["frustration"]
-                )
-                if tlx_dict else None
-            )
-            sus_dict = t_dict.get("sus")
-            sus = (
-                SystemUsabilityScaleAssessment(
-                    participant_id=t_dict["participant_id"],
-                    item_responses=sus_dict["item_responses"]
-                )
-                if sus_dict else None
-            )
-            session.record_trial(UsabilityTrialRecord(
-                trial_id=t_dict["trial_id"],
-                session_id=session_id,
-                participant_id=t_dict["participant_id"],
-                participant_role=ClinicianRole(t_dict["participant_role"]),
-                experience_years=t_dict["experience_years"],
-                scenario_id=t_dict["scenario_id"],
-                condition=UsabilityCondition(t_dict["condition"]),
-                task_start_time=t_dict["task_start_time"],
-                task_end_time=t_dict["task_end_time"],
-                task_duration_seconds=t_dict["task_duration_seconds"],
-                selected_candidate_id=t_dict["selected_candidate_id"],
-                selected_calyx_name=t_dict["selected_calyx_name"],
-                accepted_automated_proposal=t_dict["accepted_automated_proposal"],
-                clinician_override_applied=t_dict["clinician_override_applied"],
-                override_type=t_dict.get("override_type"),
-                override_rationale=t_dict.get("override_rationale"),
-                critical_errors_observed=t_dict.get("critical_errors_observed", []),
-                nasa_tlx=tlx,
-                sus=sus
-            ))
-        _ACTIVE_SESSIONS[session_id] = session
-
+        raise HTTPException(status_code=404, detail=f"Usability session '{session_id}' not found.")
     return session.compute_summary_analytics()
