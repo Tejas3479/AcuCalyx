@@ -58,19 +58,65 @@ CASES_DIR = BASE_DIR / "data" / "cases"
 
 
 def _get_candidate_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]:
-    """Helper to locate candidate trajectory from case_meta.json or synthesize canonical default."""
+    """Helper to locate candidate trajectory from artifacts/candidates.json or case_meta.json."""
+    # 1. Primary source: artifacts/candidates.json
+    cand_path = CASES_DIR / case_id / "artifacts" / "candidates.json"
+    if cand_path.is_file():
+        try:
+            with open(cand_path, "r", encoding="utf-8") as f:
+                cands = json.load(f)
+            if isinstance(cands, list):
+                matched = None
+                for cand in cands:
+                    if cand.get("candidate_id") == candidate_id or cand.get("id") == candidate_id:
+                        matched = cand
+                        break
+                if not matched and cands:
+                    matched = cands[0]
+                if matched:
+                    entry = matched.get("entry_point_lps") or matched.get("entry_point") or matched.get("skin_entry_lps") or [120.0, -180.0, -45.0]
+                    target = matched.get("target_point_lps") or matched.get("target_point") or matched.get("target_papilla_lps") or [85.0, -120.0, -60.0]
+                    calyx = matched.get("target_calyx") or matched.get("calyx_name") or "Posterior Lower Pole Calyx"
+                    length = matched.get("tract_length_mm") or matched.get("length_mm") or float(np.linalg.norm(np.array(target) - np.array(entry)))
+                    return {
+                        "candidate_id": matched.get("candidate_id") or candidate_id,
+                        "entry_point": list(entry),
+                        "target_point": list(target),
+                        "calyx_name": str(calyx),
+                        "length_mm": float(length),
+                        **matched
+                    }
+        except Exception:
+            pass
+
+    # 2. Secondary source: case_meta.json
     meta_path = CASES_DIR / case_id / "case_meta.json"
     if meta_path.is_file():
         try:
-            with open(meta_path, "r") as f:
+            with open(meta_path, "r", encoding="utf-8") as f:
                 meta = json.load(f)
             plan = meta.get("plan") or {}
             candidates = plan.get("candidates") or []
+            matched = None
             for cand in candidates:
                 if cand.get("candidate_id") == candidate_id or cand.get("id") == candidate_id:
-                    return cand
-            if candidates:
-                return candidates[0]
+                    matched = cand
+                    break
+            if not matched and candidates:
+                matched = candidates[0]
+            if matched:
+                entry = matched.get("entry_point_lps") or matched.get("entry_point") or matched.get("skin_entry_lps") or [120.0, -180.0, -45.0]
+                target = matched.get("target_point_lps") or matched.get("target_point") or matched.get("target_papilla_lps") or [85.0, -120.0, -60.0]
+                calyx = matched.get("target_calyx") or matched.get("calyx_name") or "Posterior Lower Pole Calyx"
+                length = matched.get("tract_length_mm") or matched.get("length_mm") or float(np.linalg.norm(np.array(target) - np.array(entry)))
+                return {
+                    "candidate_id": matched.get("candidate_id") or candidate_id,
+                    "entry_point": list(entry),
+                    "target_point": list(target),
+                    "calyx_name": str(calyx),
+                    "length_mm": float(length),
+                    **matched
+                }
         except Exception:
             pass
 
@@ -85,7 +131,7 @@ def _get_candidate_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]
 
 
 @router.get("/{case_id}/us/probes")
-async def list_ultrasound_probes(case_id: str) -> Dict[str, Any]:
+def list_ultrasound_probes(case_id: str) -> Dict[str, Any]:
     """Returns catalog of standard ultrasound transducer profiles for PCNL access planning."""
     probes_list = []
     for pid, p in STANDARD_PROBES.items():
@@ -109,7 +155,7 @@ async def list_ultrasound_probes(case_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{case_id}/us/reference-registry")
-async def get_reference_registry_summary(case_id: str) -> Dict[str, Any]:
+def get_reference_registry_summary(case_id: str) -> Dict[str, Any]:
     """Returns Milestone M14.0 certified phantom specs and reference dataset catalog."""
     registry = PCNLUltrasoundReferenceRegistry.create_standard_registry()
     cases_summary = []
@@ -148,7 +194,7 @@ async def get_reference_registry_summary(case_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{case_id}/us/{candidate_id}/simulated-bmode")
-async def get_simulated_bmode_image(
+def get_simulated_bmode_image(
     case_id: str,
     candidate_id: str,
     insertion_depth_mm: float = Query(0.0, ge=0.0, description="Needle advancement distance in mm"),
@@ -225,7 +271,7 @@ async def get_simulated_bmode_image(
 
 
 @router.get("/{case_id}/us/{candidate_id}/acoustic-window")
-async def get_acoustic_window_report(
+def get_acoustic_window_report(
     case_id: str,
     candidate_id: str,
     probe_id: str = Query("CURV_C5_2"),
@@ -278,7 +324,7 @@ async def get_acoustic_window_report(
 
 
 @router.get("/{case_id}/us/{candidate_id}/position-uncertainty")
-async def get_position_uncertainty_report(
+def get_position_uncertainty_report(
     case_id: str,
     candidate_id: str,
     position: OperativePosition = Query(OperativePosition.PRONE_STANDARD),

@@ -119,7 +119,7 @@ def _load_case_trajectory_or_nominal(case_id: str, candidate_id: Optional[str] =
         try:
             with open(meta_path, "r") as f:
                 meta = json.load(f)
-                laterality = meta.get("target_kidney_side", "left").upper()
+                laterality = (meta.get("target_side") or meta.get("target_kidney_side", "left")).upper()
                 if "input_path" in meta:
                     inp = Path(meta["input_path"])
                     if inp.is_file() and (inp.name.endswith(".nii.gz") or inp.name.endswith(".nii")):

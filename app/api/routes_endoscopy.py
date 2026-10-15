@@ -232,7 +232,7 @@ def _get_case_stones(case_id: str, demo_mode: bool = False) -> List[StoneBurdenU
 # -----------------------------------------------------------------------------
 
 @router.get("/{case_id}/endoscopy/instruments")
-async def list_endoscopy_instruments(case_id: str) -> Dict[str, Any]:
+def list_endoscopy_instruments(case_id: str) -> Dict[str, Any]:
     """Catalog of certified commercial rigid and flexible urological endoscopes."""
     instruments = []
     for scope in list_all_endoscopes():
@@ -276,7 +276,7 @@ async def list_endoscopy_instruments(case_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{case_id}/endoscopy/reference-phantoms")
-async def get_endoscopy_reference_phantoms(case_id: str) -> Dict[str, Any]:
+def get_endoscopy_reference_phantoms(case_id: str) -> Dict[str, Any]:
     """Milestone M15.0 certified transparent silicone phantom specifications."""
     phantoms = []
     for pid, p in M15_REFERENCE_PHANTOMS.items():
@@ -310,7 +310,7 @@ async def get_endoscopy_reference_phantoms(case_id: str) -> Dict[str, Any]:
 
 
 @router.get("/{case_id}/endoscopy/{candidate_id}/reachability")
-async def get_trajectory_reachability(
+def get_trajectory_reachability(
     case_id: str,
     candidate_id: str,
     instrument_model_id: str = Query("OLYMPUS_URF_V3", description="Validated endoscope model ID"),
@@ -394,7 +394,7 @@ async def get_trajectory_reachability(
 
 
 @router.get("/{case_id}/endoscopy/{candidate_id}/stone-coverage")
-async def get_stone_access_coverage(
+def get_stone_access_coverage(
     case_id: str,
     candidate_id: str,
     instrument_model_id: str = Query("OLYMPUS_URF_V3", description="Validated endoscope model ID"),
@@ -473,7 +473,7 @@ async def get_stone_access_coverage(
 
 
 @router.get("/{case_id}/endoscopy/{candidate_id}/access-caliber-profiles")
-async def get_access_caliber_profiles(
+def get_access_caliber_profiles(
     case_id: str,
     candidate_id: str,
     demo_mode: bool = Query(False, description="Explicit flag allowing synthetic demo data when true; patient mode (False) fails closed if case artifacts are missing"),
@@ -528,7 +528,7 @@ async def get_access_caliber_profiles(
 
 
 @router.get("/{case_id}/endoscopy/{candidate_id}/endoluminal-rehearsal")
-async def get_endoluminal_rehearsal_flythrough(
+def get_endoluminal_rehearsal_flythrough(
     case_id: str,
     candidate_id: str,
     target_calyx_id: Optional[str] = Query(None, description="Destination calyx for rehearsal navigation"),
@@ -608,7 +608,7 @@ async def get_endoluminal_rehearsal_flythrough(
 
 
 @router.get("/{case_id}/endoscopy/validation-gate")
-async def get_m15_validation_gate_report(
+def get_m15_validation_gate_report(
     case_id: str,
     manifest_path: Optional[str] = Query(None, description="Optional path to locked reference manifest JSON")
 ) -> Dict[str, Any]:

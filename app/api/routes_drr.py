@@ -195,11 +195,22 @@ def get_alara_report(
     pose_bull = construct_bullseye_carm_pose(traj, profile)
     pose_depth = construct_depth_verification_carm_pose(traj, oblique_angle_offset_deg=30.0, profile=profile)
 
+    # Read verified case laterality
+    target_side = "left"
+    meta_path = CASES_DIR / case_id / "case_meta.json"
+    if meta_path.is_file():
+        try:
+            with open(meta_path, "r", encoding="utf-8") as f:
+                meta = json.load(f)
+            target_side = (meta.get("target_side") or meta.get("target_kidney_side", "left")).lower()
+        except Exception:
+            pass
+
     report = generate_alara_planning_report(
         bullseye_angles=(pose_bull.gantry_primary_angle_deg, pose_bull.gantry_secondary_angle_deg),
         depth_angles=(pose_depth.gantry_primary_angle_deg, pose_depth.gantry_secondary_angle_deg),
         profile=profile,
-        target_kidney_side="left"
+        target_kidney_side=target_side
     )
 
     return {
