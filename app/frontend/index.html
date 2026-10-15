@@ -87,6 +87,13 @@
       <button id="btn-new-demo" class="btn" title="Generate analytical CT calibration phantom">
         + Synthetic Demo
       </button>
+      <select id="scenario-select" class="case-select" style="max-width: 175px; background: rgba(59, 130, 246, 0.1); border-color: #3b82f6; color: #93c5fd; font-weight: 600;" onchange="loadSelectedScenario(this.value)">
+        <option value="">🎯 Benchmark Scenarios...</option>
+        <option value="SCENARIO_01_LOWER_POLE">S1: Lower Pole (Standard)</option>
+        <option value="SCENARIO_02_RETRORENAL_COLON">S2: Retrorenal Colon</option>
+        <option value="SCENARIO_03_STAGHORN_INFUNDIBULUM">S3: Partial Staghorn</option>
+        <option value="SCENARIO_04_SUPRACOSTAL_HIGH_KIDNEY">S4: Supracostal (High)</option>
+      </select>
       <input type="file" id="file-upload" style="display: none;" accept=".zip,.nii,.nii.gz">
       <button id="btn-upload" class="btn" onclick="document.getElementById('file-upload').click()">
         Upload CT
@@ -400,6 +407,33 @@
           <div style="padding: 20px; text-align: center; color: var(--text-secondary);">
             Click <strong>"Run Planning Pipeline"</strong> to generate optimal Pareto needle access trajectories.
           </div>
+        </div>
+      </div>
+
+      <!-- CT Needle Corridor Keyframe Review Panel (Horizon 1) -->
+      <div class="panel-section" id="keyframe-review-panel">
+        <div class="section-title">
+          <span>CT Corridor Keyframes</span>
+          <span id="keyframe-active-cand-badge" class="version-pill" style="color: var(--accent-cyan);">ACTIVE TRACT</span>
+        </div>
+        <div style="display: flex; gap: 4px; margin-bottom: 6px;">
+          <button class="tab-btn active" id="tab-kf-axial" style="flex: 1; padding: 4px 2px; font-size: 10px;" onclick="switchKeyframeTab('axial')">Axial Slice</button>
+          <button class="tab-btn" id="tab-kf-coronal" style="flex: 1; padding: 4px 2px; font-size: 10px;" onclick="switchKeyframeTab('coronal')">Coronal</button>
+          <button class="tab-btn" id="tab-kf-bullseye" style="flex: 1; padding: 4px 2px; font-size: 10px;" onclick="switchKeyframeTab('bullseye')">Bull's-Eye</button>
+        </div>
+        <div style="background: #0b0e14; border-radius: 6px; border: 1px solid var(--border-color); overflow: hidden; text-align: center; position: relative;">
+          <img id="keyframe-preview-img" src="" alt="CT Keyframe Preview" style="width: 100%; height: 180px; object-fit: contain; display: block; background: #0b0e14;">
+        </div>
+        <div id="keyframe-caption" style="font-size: 10px; color: var(--text-secondary); margin-top: 5px; line-height: 1.3;">
+          Target depth slice with needle corridor ±5mm & scale bar.
+        </div>
+        <div style="display: flex; gap: 6px; margin-top: 6px;">
+          <button class="btn" style="flex: 1; font-size: 10px; padding: 4px;" onclick="openKeyframeLightbox()">
+            🔍 Enlarge
+          </button>
+          <button class="btn btn-primary" style="flex: 1; font-size: 10px; padding: 4px;" onclick="openPdfModal()">
+            📄 View PDF
+          </button>
         </div>
       </div>
 
@@ -1250,6 +1284,67 @@
         <button class="btn btn-primary" onclick="document.getElementById('modal-verbal-protocol').style.display='none'">Close Protocol Card</button>
       </div>
     </div>
+  <!-- Preoperative Planning PDF Report Modal (Horizon 1) -->
+  <div id="modal-pdf-report" class="modal-overlay" style="display: none; z-index: 1070;">
+    <div class="modal-content" style="width: 950px; max-width: 96vw; height: 90vh; display: flex; flex-direction: column; padding: 16px;">
+      <div class="modal-header" style="padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-weight: 700; font-size: 15px; color: var(--accent-cyan);">AcuCalyx™ Preoperative Planning Report (2-Page Auditable PDF)</span>
+          <span class="version-pill" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">DECISION SUPPORT ONLY</span>
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-pdf-report').style.display='none'">✕</button>
+      </div>
+      <div style="flex: 1; background: #1e293b; border-radius: 6px; overflow: hidden; margin: 12px 0; border: 1px solid var(--border-color);">
+        <iframe id="pdf-report-iframe" src="" style="width: 100%; height: 100%; border: none;"></iframe>
+      </div>
+      <div style="display: flex; justify-content: space-between; align-items: center; padding-top: 6px;">
+        <span style="font-size: 11px; color: var(--text-secondary);">Includes embedded CT MPR keyframes, candidate comparison matrix, C-arm fluoroscopy presets, and surgeon sign-off.</span>
+        <div style="display: flex; gap: 8px;">
+          <a id="pdf-direct-download-btn" class="btn btn-primary" href="#" target="_blank" download style="text-decoration: none;">
+            ⬇️ Download Signed PDF
+          </a>
+          <button class="btn" onclick="document.getElementById('pdf-report-iframe').contentWindow.print()">
+            🖨️ Print
+          </button>
+          <button class="btn" onclick="document.getElementById('modal-pdf-report').style.display='none'">
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyframe Lightbox Modal (Horizon 1) -->
+  <div id="modal-keyframe-lightbox" class="modal-overlay" style="display: none; z-index: 1080;">
+    <div class="modal-content" style="width: 1050px; max-width: 96vw; padding: 18px;">
+      <div class="modal-header" style="padding-bottom: 10px; border-bottom: 1px solid var(--border-color);">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-weight: 700; font-size: 15px; color: var(--accent-cyan);">CT Needle Corridor & Projection Keyframes</span>
+          <span id="lightbox-cand-badge" class="version-pill" style="background: rgba(59, 130, 246, 0.2); color: #60a5fa;">ACTIVE CANDIDATE</span>
+        </div>
+        <button class="btn" onclick="document.getElementById('modal-keyframe-lightbox').style.display='none'">✕</button>
+      </div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-top: 14px;">
+        <div style="background: #0b0e14; border-radius: 6px; padding: 10px; border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-weight: 700; font-size: 12px; color: #10b981; margin-bottom: 8px;">1. Axial MPR Slice @ Target</div>
+          <img id="lightbox-img-axial" src="" style="width: 100%; border-radius: 4px; border: 1px solid #1e293b; background: #000;">
+          <div style="font-size: 10.5px; color: var(--text-secondary); margin-top: 8px; line-height: 1.3;">Target reticle (green), corridor ±5mm margin (amber), 20mm scale bar.</div>
+        </div>
+        <div style="background: #0b0e14; border-radius: 6px; padding: 10px; border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-weight: 700; font-size: 12px; color: #10b981; margin-bottom: 8px;">2. Coronal MPR Slice @ Calyx Axis</div>
+          <img id="lightbox-img-coronal" src="" style="width: 100%; border-radius: 4px; border: 1px solid #1e293b; background: #000;">
+          <div style="font-size: 10.5px; color: var(--text-secondary); margin-top: 8px; line-height: 1.3;">Longitudinal calyx axis, cranial-caudal trajectory angle, Superior-Inferior tags.</div>
+        </div>
+        <div style="background: #0b0e14; border-radius: 6px; padding: 10px; border: 1px solid var(--border-color); text-align: center;">
+          <div style="font-weight: 700; font-size: 12px; color: #38bdf8; margin-bottom: 8px;">3. C-Arm Bull's-Eye View</div>
+          <img id="lightbox-img-bullseye" src="" style="width: 100%; border-radius: 4px; border: 1px solid #1e293b; background: #000;">
+          <div style="font-size: 10.5px; color: var(--text-secondary); margin-top: 8px; line-height: 1.3;">Coaxial down-the-barrel reticle with calibrated primary/secondary gantry angle presets.</div>
+        </div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; margin-top: 14px;">
+        <button class="btn btn-primary" onclick="document.getElementById('modal-keyframe-lightbox').style.display='none'">Close</button>
+      </div>
+    </div>
   </div>
 
   <!-- Scripts -->
@@ -1766,6 +1861,7 @@
       if (candObj) {
         mprViewer.setActiveCandidate(candObj);
       }
+      updateKeyframePreview();
     }
 
     async function approveTrajectory() {
@@ -1846,8 +1942,101 @@
     }
 
     function downloadPDF() {
+      if (!currentCaseId) {
+        alert('Please select or plan a case first.');
+        return;
+      }
+      openPdfModal();
+    }
+
+    let currentKeyframeTab = 'axial';
+
+    function switchKeyframeTab(tab) {
+      currentKeyframeTab = tab;
+      ['axial', 'coronal', 'bullseye'].forEach(t => {
+        const btn = document.getElementById(`tab-kf-${t}`);
+        if (btn) btn.classList.toggle('active', t === tab);
+      });
+      updateKeyframePreview();
+    }
+
+    function updateKeyframePreview() {
       if (!currentCaseId) return;
-      window.open(`/api/cases/${currentCaseId}/report`, '_blank');
+      const img = document.getElementById('keyframe-preview-img');
+      const caption = document.getElementById('keyframe-caption');
+      if (!img) return;
+
+      const t = Date.now();
+      let kfName = 'axial_keyframe.png';
+      let capText = 'Axial MPR @ Target: needle corridor ±5mm margin, skin entry & 20mm scale bar.';
+
+      if (currentKeyframeTab === 'coronal') {
+        kfName = 'coronal_keyframe.png';
+        capText = 'Coronal MPR @ Calyx Axis: longitudinal puncture slope & cranial-caudal alignment.';
+      } else if (currentKeyframeTab === 'bullseye') {
+        kfName = 'bullseye_keyframe.png';
+        capText = 'C-Arm Bull\'s-Eye Projection: coaxial down-the-barrel reticle with calibrated gantry presets.';
+      }
+
+      img.src = `/api/cases/${currentCaseId}/keyframes/${kfName}?t=${t}`;
+      if (caption) caption.textContent = capText;
+
+      const activeBadge = document.getElementById('keyframe-active-cand-badge');
+      if (activeBadge) {
+        activeBadge.textContent = selectedCandidateId || 'ACTIVE TRACT';
+      }
+    }
+
+    function openKeyframeLightbox() {
+      if (!currentCaseId) {
+        alert('Please load an active planning case first.');
+        return;
+      }
+      const t = Date.now();
+      const badge = document.getElementById('lightbox-cand-badge');
+      if (badge) badge.textContent = selectedCandidateId ? `TRACT: ${selectedCandidateId}` : 'ACTIVE CANDIDATE';
+      document.getElementById('lightbox-img-axial').src = `/api/cases/${currentCaseId}/keyframes/axial_keyframe.png?t=${t}`;
+      document.getElementById('lightbox-img-coronal').src = `/api/cases/${currentCaseId}/keyframes/coronal_keyframe.png?t=${t}`;
+      document.getElementById('lightbox-img-bullseye').src = `/api/cases/${currentCaseId}/keyframes/bullseye_keyframe.png?t=${t}`;
+      document.getElementById('modal-keyframe-lightbox').style.display = 'flex';
+    }
+
+    function openPdfModal() {
+      if (!currentCaseId) {
+        alert('Please load or plan a case first.');
+        return;
+      }
+      const modal = document.getElementById('modal-pdf-report');
+      const iframe = document.getElementById('pdf-report-iframe');
+      const downloadLink = document.getElementById('pdf-direct-download-btn');
+      const url = `/api/cases/${currentCaseId}/report?t=${Date.now()}`;
+      iframe.src = url;
+      downloadLink.href = url;
+      downloadLink.setAttribute('download', `AcuCalyx_${currentCaseId}_Preoperative_Report.pdf`);
+      modal.style.display = 'flex';
+    }
+
+    async function loadSelectedScenario(scenarioId) {
+      if (!scenarioId) return;
+      try {
+        const res = await fetch(`/api/usability/scenarios/${scenarioId}/load`, {
+          method: 'POST'
+        });
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || 'Could not load benchmark scenario');
+        }
+        const data = await res.json();
+        alert(`🎯 Benchmark Scenario Loaded: ${data.title}\n\nTarget Side: ${data.target_side.toUpperCase()} Kidney\nComplexity: ${data.complexity_tier}\nCandidates Generated: ${data.candidate_count}\n\nClick OK to inspect 3D anatomy, comparison matrix, and CT keyframes.`);
+        await loadCasesList();
+        document.getElementById('case-select').value = data.case_id;
+        await selectCase(data.case_id);
+        updateKeyframePreview();
+      } catch (err) {
+        alert('Scenario Loading Error: ' + err.message);
+      } finally {
+        document.getElementById('scenario-select').value = '';
+      }
     }
 
     async function showProvenance() {
@@ -2473,8 +2662,18 @@
       const coronalSlice = (typeof mprViewer !== 'undefined' && mprViewer?.maxSlices?.CORONAL) ? Math.floor(mprViewer.maxSlices.CORONAL / 2) : 48;
       const ww = (typeof mprViewer !== 'undefined' && mprViewer) ? mprViewer.windowWidth : 400;
       const wl = (typeof mprViewer !== 'undefined' && mprViewer) ? mprViewer.windowLevel : 40;
-      axialImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=AXIAL&slice_index=${axialSlice}&window_width=${ww}&window_level=${wl}`;
-      coronalImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=CORONAL&slice_index=${coronalSlice}&window_width=${ww}&window_level=${wl}`;
+      
+      const ts = Date.now();
+      axialImg.onerror = () => {
+        axialImg.onerror = null;
+        axialImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=AXIAL&slice_index=${axialSlice}&window_width=${ww}&window_level=${wl}`;
+      };
+      coronalImg.onerror = () => {
+        coronalImg.onerror = null;
+        coronalImg.src = `/api/cases/${currentCaseId}/mpr/slice?orientation=CORONAL&slice_index=${coronalSlice}&window_width=${ww}&window_level=${wl}`;
+      };
+      axialImg.src = `/api/cases/${currentCaseId}/keyframes/axial_keyframe.png?t=${ts}`;
+      coronalImg.src = `/api/cases/${currentCaseId}/keyframes/coronal_keyframe.png?t=${ts}`;
 
       document.getElementById('card-stone-volume').textContent = document.getElementById('info-stone-vol')?.textContent || '-- mm³';
       document.getElementById('card-stone-feret').textContent = document.getElementById('info-stone-feret')?.textContent || '-- mm';

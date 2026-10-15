@@ -325,3 +325,59 @@ def test_api_usability_session_lifecycle_and_trial_recording():
     assert rep_data["task_duration_seconds"]["reduction_percent"] == 60.0  # (300 - 120)/300 = 60%
     assert rep_data["acceptance_metrics"]["acceptance_rate_pct"] == 100.0
     assert rep_data["sus_analysis"]["mean_sus"] > 80.0
+
+
+def test_load_usability_scenario_endpoint():
+    """Verifies POST /api/usability/scenarios/{scenario_id}/load instantiates challenge case, plans tracts, and renders keyframes."""
+    # 1. 404 on nonexistent scenario
+    res_404 = client.post("/api/usability/scenarios/NONEXISTENT_SCENARIO/load")
+    assert res_404.status_code == 404
+
+    # 2. Successfully load SCENARIO_01_LOWER_POLE
+    res = client.post("/api/usability/scenarios/SCENARIO_01_LOWER_POLE/load")
+    assert res.status_code == 200
+    data = res.json()
+    assert data["case_id"] == "CASE_SCENARIO_01_LOWER_POLE"
+    assert data["scenario_id"] == "SCENARIO_01_LOWER_POLE"
+    assert data["target_side"] == "left"
+    assert data["candidate_count"] > 0
+    assert data["status"] == "READY"
+    assert "Lower Pole" in data["title"]
+
+    case_id = data["case_id"]
+
+    # 3. Verify case status from API and metadata from case store
+    status_res = client.get(f"/api/cases/{case_id}/status")
+    assert status_res.status_code == 200
+    status_data = status_res.json()
+    assert status_data["state"] == "PLAN_GENERATED"
+    assert status_data["target_side"] == "left"
+    assert status_data["candidate_count"] > 0
+
+    from app.api.case_store import load_case_meta
+    meta = load_case_meta(case_id)
+    assert meta["state"] == "PLAN_GENERATED"
+    assert meta["target_side"] == "left"
+    assert meta["laterality_confirmation"]["is_verified"] is True
+    assert meta["laterality_confirmation"]["confirmed_side"] == "left"
+    assert meta["surgical_position_confirmation"]["is_confirmed"] is True
+
+    # 4. Verify candidate comparison matrix is generated and valid
+    matrix_res = client.get(f"/api/cases/{case_id}/candidates/comparison-matrix")
+    assert matrix_res.status_code == 200
+    matrix = matrix_res.json()
+    assert len(matrix["candidates"]) > 0
+
+    # 5. Verify server-side corridor keyframe endpoints render for this case
+    for kf_name in ["axial_keyframe.png", "coronal_keyframe.png", "bullseye_keyframe.png"]:
+        kf_res = client.get(f"/api/cases/{case_id}/keyframes/{kf_name}")
+        assert kf_res.status_code == 200
+        assert kf_res.headers["content-type"] == "image/png"
+        assert len(kf_res.content) > 1000
+
+    # 6. Verify 2-page vector PDF report endpoint compiles for this case
+    pdf_res = client.get(f"/api/cases/{case_id}/report")
+    assert pdf_res.status_code == 200
+    assert pdf_res.headers["content-type"] == "application/pdf"
+    assert pdf_res.content.startswith(b"%PDF")
+

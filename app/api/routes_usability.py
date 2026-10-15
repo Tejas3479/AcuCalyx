@@ -469,6 +469,124 @@ def list_usability_scenarios():
     ]
 
 
+@router.post("/scenarios/{scenario_id}/load")
+def load_usability_scenario(scenario_id: str):
+    """
+    Instantiates a standardized PCNL benchmark challenge scenario as an active case,
+    pre-populating clinical metadata, verified laterality, operative position,
+    and executing the planning pipeline so candidates, 3D meshes, and keyframes are ready.
+    """
+    if scenario_id not in STANDARD_USABILITY_SCENARIOS:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Scenario '{scenario_id}' not found. Available: {list(STANDARD_USABILITY_SCENARIOS.keys())}"
+        )
+
+    scenario = STANDARD_USABILITY_SCENARIOS[scenario_id]
+    from app.api.case_store import get_case_dir, save_case_meta, log_case_audit_event, CASES_DIR
+    from acucalyx.synthetic.phantom_generator import generate_synthetic_pcnl_phantom, save_phantom_to_nifti
+    from acucalyx.geometry.anatomical_kidney_builder import AnatomicalKidneyBuilder
+    from acucalyx.pipeline import run_planning_pipeline
+    from app.api.main import set_cached_volume
+
+    case_id = f"CASE_{scenario_id}"
+    case_dir = get_case_dir(case_id)
+    raw_dir = case_dir / "raw"
+    artifacts_dir = case_dir / "artifacts"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate scenario CT phantom
+    vol, spatial, gt = generate_synthetic_pcnl_phantom(
+        grid_shape=(128, 128, 96),
+        spacing_mm=(1.0, 1.0, 1.0),
+        stone_radius_mm=7.0 if "STAGHORN" in scenario_id else 5.0,
+        noise_sigma_hu=2.0
+    )
+    nii_path = raw_dir / "phantom.nii.gz"
+    save_phantom_to_nifti(vol, spatial, nii_path)
+
+    # Set cache for MPR slices and keyframe rendering
+    set_cached_volume(case_id, vol, spatial)
+
+    # 3D meshes
+    mesh_dest = artifacts_dir / "meshes"
+    mesh_dest.mkdir(parents=True, exist_ok=True)
+    AnatomicalKidneyBuilder().build_complete_anatomical_package(mesh_dest)
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    target_side = scenario.target_kidney_side.lower()
+
+    meta = {
+        "case_id": case_id,
+        "is_demo": True,
+        "scenario_id": scenario_id,
+        "scenario_title": scenario.title,
+        "challenge_category": scenario.challenge_category,
+        "state": "READY",
+        "created_at": now_iso,
+        "updated_at": now_iso,
+        "input_path": str(nii_path),
+        "target_side": target_side,
+        "is_stale": False,
+        "active_candidate_id": None,
+        "stone_count": 1,
+        "candidate_count": 0,
+        "laterality_confirmation": {
+            "is_verified": True,
+            "confirmed_side": target_side,
+            "ct_metadata_side": target_side,
+            "verified_at": now_iso,
+            "is_two_step_confirmed": True,
+            "source": f"IEC_62366_{scenario_id}"
+        },
+        "surgical_position_confirmation": {
+            "is_confirmed": True,
+            "operative_position": "PRONE_STANDARD",
+            "ct_acquisition_position": "HFS",
+            "confirmed_at": now_iso
+        },
+        "clinical_notice": f"IEC 62366-1 Scenario: {scenario.title}. {scenario.clinical_summary}"
+    }
+    save_case_meta(case_id, meta)
+    log_case_audit_event(case_id, "SCENARIO_LOADED", {"scenario_id": scenario_id, "title": scenario.title})
+
+    # Run planning pipeline automatically
+    pipeline_cfg = {
+        "coarse_step_mm": 15.0,
+        "monte_carlo_samples": 20,
+        "demo_mode": True,
+        "require_clinical_segmentation": False,
+        "segmentation_method": "HEURISTIC_DEMO"
+    }
+    res = run_planning_pipeline(
+        input_path=nii_path,
+        output_dir=artifacts_dir,
+        side=target_side,
+        case_id=case_id,
+        config=pipeline_cfg,
+        segmentation_method="HEURISTIC_DEMO"
+    )
+
+    meta["state"] = "PLAN_GENERATED"
+    meta["candidate_count"] = len(res.candidates)
+    meta["active_candidate_id"] = res.candidates[0].candidate_id if res.candidates else None
+    save_case_meta(case_id, meta)
+
+    return {
+        "case_id": case_id,
+        "scenario_id": scenario_id,
+        "title": scenario.title,
+        "clinical_summary": scenario.clinical_summary,
+        "target_side": target_side,
+        "benchmark_reference_tract": scenario.benchmark_reference_tract,
+        "contraindicated_tracts": scenario.contraindicated_tracts,
+        "complexity_tier": scenario.complexity_tier,
+        "candidate_count": len(res.candidates),
+        "status": "READY"
+    }
+
+
 @router.get("/discovery/interview-guide")
 def get_surgeon_discovery_guide():
     """Returns the structured Surgeon Discovery Interview Protocol schema (Milestone M14.5)."""
