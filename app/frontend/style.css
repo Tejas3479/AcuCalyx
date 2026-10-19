@@ -853,3 +853,43 @@ select.theme-select:focus {
   }
 }
 
+/* ==========================================================================
+   WCAG 2.2 AA Accessibility & Responsive Support
+   ========================================================================== */
+
+/* Motion sensitivity reduction */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Focus visibility for keyboard navigation */
+:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+/* Tablet & Mobile responsive adaptation */
+@media screen and (max-width: 1280px) {
+  .cockpit-container {
+    flex-direction: column;
+    overflow-y: auto;
+    height: auto;
+  }
+  .sidebar-left, .sidebar-right {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 100% !important;
+    border: none;
+    border-bottom: 1px solid var(--border-color);
+  }
+  .viewport-center {
+    height: 520px !important;
+    min-height: 520px !important;
+  }
+}
+

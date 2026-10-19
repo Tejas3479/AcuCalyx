@@ -38,6 +38,7 @@ class ReleaseAuthorizationDecision:
     dimension_results: Dict[str, bool] = field(default_factory=dict)
     blocking_reasons: List[str] = field(default_factory=list)
     audit_findings: List[str] = field(default_factory=list)
+    is_simulated_evaluation: bool = True
 
 
 class ReleaseGateEvaluator:
@@ -164,6 +165,11 @@ class ReleaseGateEvaluator:
 
         is_authorized = all(dimensions.values()) and (len(blocking_reasons) == 0)
 
+        findings.append(
+            "SIMULATION_NOTICE: Release evaluation utilized simulated test baseline pass rate and vulnerability inputs. "
+            "Formal regulatory release requires live end-to-end execution of automated test suites and vulnerability scanners."
+        )
+
         return ReleaseAuthorizationDecision(
             is_authorized=is_authorized,
             software_build_id=self.config_baseline.software_build_id,
@@ -172,4 +178,5 @@ class ReleaseGateEvaluator:
             dimension_results=dimensions,
             blocking_reasons=blocking_reasons,
             audit_findings=findings,
+            is_simulated_evaluation=True,
         )

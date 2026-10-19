@@ -331,8 +331,24 @@ def test_patient_case_fails_closed_without_neural_weights(tmp_path):
             "is_two_step_confirmed": True
         }
     )
-    assert res_confirm.status_code == 200
-    assert res_confirm.json()["verified"] is True
+    # Pre-check 1b: Prior to operative position confirmation, clinical planning is blocked by Interlock U2 (HTTP 412)
+    res_no_pos = client.post(
+        f"/api/cases/{case_id}/plan",
+        json={"target_side": "left"}
+    )
+    assert res_no_pos.status_code == 412
+    assert "Interlock U2 Operative Pose Gate" in res_no_pos.json()["detail"]
+
+    # Clinician confirms operative position via authoritative usability endpoint
+    res_pos = client.post(
+        f"/api/usability/cases/{case_id}/position-confirm",
+        json={
+            "planned_operative_position": "PRONE_STANDARD",
+            "is_clinician_confirmed": True
+        }
+    )
+    assert res_pos.status_code == 200
+    assert res_pos.json()["confirmed"] is True
 
     # Pre-check 2: Attempt with mismatched side -> HTTP 400
     res_mismatch = client.post(

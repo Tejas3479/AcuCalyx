@@ -45,12 +45,19 @@ test = [
     "httpx>=0.25.0",
 ]
 
+[project.scripts]
+acucalyx = "app.api.main:run_server"
+
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["src", "."]
+include = ["acucalyx*", "app*"]
+
+[tool.setuptools.package-data]
+"app.frontend" = ["*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --strict-markers"

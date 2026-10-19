@@ -7,9 +7,9 @@
   <link rel="stylesheet" href="style.css?v=20261002_05">
   
   <!-- Three.js and Loaders -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
   <style>
     /* Full Viewport 3D Canvas Layout */
@@ -132,7 +132,7 @@
   <div class="cockpit-container">
 
     <!-- Left Sidebar: Controls & Metrics -->
-    <aside class="sidebar-left">
+    <aside class="sidebar-left" role="region" aria-label="Controls and Anatomical Parameters">
       <!-- Case Meta -->
       <div class="panel-section">
         <div class="section-title">
@@ -407,7 +407,7 @@
     </main>
 
     <!-- Right Sidebar: Pareto Decision Matrix -->
-    <aside class="sidebar-right">
+    <aside class="sidebar-right" role="region" aria-label="Pareto Access Candidates and Decision Matrix">
       <div class="panel-section">
         <div class="section-title">
           <span>Pareto Access Candidates</span>
@@ -4215,18 +4215,61 @@
             ? '<span class="state-badge" style="background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 10px;">REJECTED_NON_OP</span>'
             : '<span class="state-badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px;">EVALUABLE</span>';
 
-          tr.innerHTML = `
-            <td style="padding: 8px; font-weight: 700; color: var(--text-primary);">${c.case_id}</td>
-            <td style="padding: 8px; color: ${opColor}; font-weight: 600;">${c.opacification_quality}</td>
-            <td style="padding: 8px;">${c.reader_count} readers</td>
-            <td style="padding: 8px; font-weight: 600;">${diceText}</td>
-            <td style="padding: 8px; color: #fbbf24;">${ambVol}</td>
-            <td style="padding: 8px;">${calyxCount}</td>
-            <td style="padding: 8px;">${statusBadge}</td>
-            <td style="padding: 8px; text-align: right;">
-              <button class="btn btn-sm" onclick="inspectCtuCase('${c.case_id}')" style="padding: 2px 8px; font-size: 10.5px;">Inspect</button>
-            </td>
-          `;
+          const tdCase = document.createElement('td');
+          tdCase.style.cssText = 'padding: 8px; font-weight: 700; color: var(--text-primary);';
+          tdCase.textContent = c.case_id;
+          tr.appendChild(tdCase);
+
+          const tdOp = document.createElement('td');
+          tdOp.style.cssText = `padding: 8px; color: ${opColor}; font-weight: 600;`;
+          tdOp.textContent = c.opacification_quality;
+          tr.appendChild(tdOp);
+
+          const tdReaders = document.createElement('td');
+          tdReaders.style.padding = '8px';
+          tdReaders.textContent = `${c.reader_count} readers`;
+          tr.appendChild(tdReaders);
+
+          const tdDice = document.createElement('td');
+          tdDice.style.cssText = 'padding: 8px; font-weight: 600;';
+          tdDice.textContent = diceText;
+          tr.appendChild(tdDice);
+
+          const tdAmb = document.createElement('td');
+          tdAmb.style.cssText = 'padding: 8px; color: #fbbf24;';
+          tdAmb.textContent = ambVol;
+          tr.appendChild(tdAmb);
+
+          const tdCalyx = document.createElement('td');
+          tdCalyx.style.padding = '8px';
+          tdCalyx.textContent = calyxCount;
+          tr.appendChild(tdCalyx);
+
+          const tdStatus = document.createElement('td');
+          tdStatus.style.padding = '8px';
+          const badgeSpan = document.createElement('span');
+          badgeSpan.className = 'state-badge';
+          if (isNonOp) {
+            badgeSpan.style.cssText = 'background: rgba(239, 68, 68, 0.2); color: #f87171; font-size: 10px;';
+            badgeSpan.textContent = 'REJECTED_NON_OP';
+          } else {
+            badgeSpan.style.cssText = 'background: rgba(16, 185, 129, 0.2); color: #34d399; font-size: 10px;';
+            badgeSpan.textContent = 'EVALUABLE';
+          }
+          tdStatus.appendChild(badgeSpan);
+          tr.appendChild(tdStatus);
+
+          const tdAction = document.createElement('td');
+          tdAction.style.cssText = 'padding: 8px; text-align: right;';
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-sm';
+          btn.style.cssText = 'padding: 2px 8px; font-size: 10.5px;';
+          btn.textContent = 'Inspect';
+          const currentCaseId = c.case_id;
+          btn.addEventListener('click', () => inspectCtuCase(currentCaseId));
+          tdAction.appendChild(btn);
+          tr.appendChild(tdAction);
+
           tbody.appendChild(tr);
         });
       } catch (err) {

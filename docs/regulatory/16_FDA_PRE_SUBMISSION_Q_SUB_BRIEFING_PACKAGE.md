@@ -107,8 +107,11 @@ All candidate devices have been audited against the FDA 510(k) database:
 
 AcuCalyx™ Core has undergone extensive non-clinical analytical verification and benchtop metrological validation.
 
-### 5.1 Milestone M15-V CT Urography Multi-Reader Benchmark (M15.1)
-To establish ground truth anatomical accuracy without synthetic bias, a controlled feasibility cohort of real de-identified excretory-phase CT Urography (CTU) series was evaluated across 3 independent expert clinical readers (2 Attending Endourologists, 1 Interventional Radiologist):
+### 5.1 Milestone M15-V CT Urography Multi-Reader Benchmark [PRE-CLINICAL PROTOCOL & SYNTHETIC HARNESS BENCHMARK SPECIFICATION] (M15.1)
+> [!NOTE]
+> **Pre-Clinical Harness Notice:** In the current software release (v2.1.0), this benchmark specifies the formal pre-clinical verification protocol, test harnesses, and mathematical consensus algorithms (EM STAPLE / Fleiss Kappa). In-code execution utilizes simulated reference geometries and synthetic reader distributions to verify algorithm determinism and fail-closed gates prior to regulatory submission of multi-institutional clinical cohorts.
+
+To establish ground truth anatomical accuracy without synthetic bias for regulatory clearance, a controlled feasibility protocol specifying excretory-phase CT Urography (CTU) evaluation across 3 independent expert clinical readers (2 Attending Endourologists, 1 Interventional Radiologist) was defined:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────────┐

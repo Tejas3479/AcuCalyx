@@ -365,7 +365,8 @@ def generate_fallback_keyframes(
     draw_ax.line([(450, 380), (cx, cy)], fill=(16, 185, 129), width=2)
     draw_ax.text((420, 390), "Skin Entry", fill=(245, 158, 11), font=font)
     draw_ax.text((cx + 25, cy - 10), f"Target: {candidate.target_calyx_name}", fill=(16, 185, 129), font=font)
-    draw_ax.text((8, 6), f"AXIAL MPR TRAJECTORY [Target: {candidate.target_calyx_name}]", fill=(255, 255, 255), font=font)
+    draw_ax.text((8, 6), f"SCHEMATIC AXIAL TRAJECTORY [SIMULATION] - Target: {candidate.target_calyx_name}", fill=(255, 255, 255), font=font)
+    draw_ax.text((120, 480), "SCHEMATIC DIAGRAM — NOT EMPIRICAL CT MPR", fill=(239, 68, 68), font=font)
     img_ax.save(str(axial_path), format="PNG")
 
     # 2. Fallback Coronal schematic
@@ -376,7 +377,8 @@ def generate_fallback_keyframes(
     draw_cor.line([(440, 390), (cx, cy)], fill=(16, 185, 129), width=2)
     draw_cor.text((410, 400), "Skin Entry", fill=(245, 158, 11), font=font)
     draw_cor.text((cx + 25, cy - 10), f"Target: {candidate.target_calyx_name}", fill=(16, 185, 129), font=font)
-    draw_cor.text((8, 6), f"CORONAL MPR TRAJECTORY [Target: {candidate.target_calyx_name}]", fill=(255, 255, 255), font=font)
+    draw_cor.text((8, 6), f"SCHEMATIC CORONAL TRAJECTORY [SIMULATION] - Target: {candidate.target_calyx_name}", fill=(255, 255, 255), font=font)
+    draw_cor.text((120, 480), "SCHEMATIC DIAGRAM — NOT EMPIRICAL CT MPR", fill=(239, 68, 68), font=font)
     img_cor.save(str(coronal_path), format="PNG")
 
     # 3. Bull's-eye projection

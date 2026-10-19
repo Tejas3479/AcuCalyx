@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 import hashlib
 from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 import numpy as np
 
 from acucalyx.endoscopy.multi_reader_pilot import (
@@ -40,13 +40,33 @@ _LATEST_REPORT: Optional[Phase0FeasibilityReport] = None
 
 
 class CTUIngestRequest(BaseModel):
-    case_id: str
-    dicom_series_uid: str
+    case_id: str = Field(..., pattern=r"^[A-Za-z0-9_-]{3,64}$")
+    dicom_series_uid: str = Field(..., max_length=128)
     opacification_quality: CTUOpacificationQuality
     grid_shape: List[int] = Field(default=[60, 60, 40])
     spacing_mm: List[float] = Field(default=[1.0, 1.0, 1.0])
     scanner_model: Optional[str] = "Siemens Somatom Force"
     contrast_agent: Optional[str] = "Omnipaque 350"
+
+    @field_validator("grid_shape")
+    @classmethod
+    def validate_grid_shape(cls, v: List[int]) -> List[int]:
+        if len(v) != 3:
+            raise ValueError("grid_shape must have exactly 3 dimensions (Z, Y, X).")
+        for dim in v:
+            if dim < 1 or dim > 512:
+                raise ValueError("grid_shape dimensions must be between 1 and 512.")
+        return v
+
+    @field_validator("spacing_mm")
+    @classmethod
+    def validate_spacing(cls, v: List[float]) -> List[float]:
+        if len(v) != 3:
+            raise ValueError("spacing_mm must have exactly 3 values.")
+        for s in v:
+            if s < 0.05 or s > 20.0:
+                raise ValueError("spacing_mm values must be between 0.05 and 20.0 mm.")
+        return v
 
 
 def _serialize_consensus(consensus: MultiReaderConsensusResult) -> Dict[str, Any]:
@@ -328,5 +348,7 @@ def ingest_ctu_case(req: CTUIngestRequest):
         "case_id": new_case.case_id,
         "opacification_quality": new_case.opacification_quality.value,
         "reader_count": len(new_case.annotations),
-        "status": "INGESTED" if req.opacification_quality != CTUOpacificationQuality.NON_OPACIFIED else "FLAGGED_NON_OPACIFIED"
+        "status": "INGESTED" if req.opacification_quality != CTUOpacificationQuality.NON_OPACIFIED else "FLAGGED_NON_OPACIFIED",
+        "is_synthetic_demonstration": True,
+        "regulatory_notice": "SIMULATION HARNESS ONLY: Synthesized test fixture. Not an empirical clinical validation record."
     }

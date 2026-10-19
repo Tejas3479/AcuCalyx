@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
+import warnings
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -94,7 +96,20 @@ class PHIGuard:
     """Executes PS 3.15 Annex E de-identification and verifies privacy compliance."""
 
     def __init__(self, hmac_key: Optional[bytes] = None) -> None:
-        self.pseudonymizer = HMACPseudonymizer(hmac_key or b"ACUCALYX_CANONICAL_TEST_SECRET_2026")
+        env_key = os.getenv("ACUCALYX_DEID_SECRET")
+        if hmac_key:
+            selected_key = hmac_key
+        elif env_key:
+            selected_key = env_key.encode("utf-8")
+        else:
+            warnings.warn(
+                "PHIGuard: Using default canonical development secret. In clinical/production deployments, "
+                "set the ACUCALYX_DEID_SECRET environment variable to prevent deterministic pseudonym recovery.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            selected_key = b"ACUCALYX_CANONICAL_TEST_SECRET_2026"
+        self.pseudonymizer = HMACPseudonymizer(selected_key)
 
     def deidentify(self, ds: Dataset) -> Dataset:
         """Apply PS 3.15 Annex E profile to an in-memory pydicom Dataset."""

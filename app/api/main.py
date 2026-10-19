@@ -54,6 +54,39 @@ from app.api.schemas import (
 logger = logging.getLogger("acucalyx.api")
 logging.basicConfig(level=logging.INFO, format="[%(asctime)s] %(levelname)s %(name)s: %(message)s")
 
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, Security
+
+API_KEY_HEADER = APIKeyHeader(name="X-AcuCalyx-API-Key", auto_error=False)
+BEARER_AUTH = HTTPBearer(auto_error=False)
+
+
+def get_authenticated_clinician(
+    api_key: Optional[str] = Security(API_KEY_HEADER),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(BEARER_AUTH),
+) -> Dict[str, Any]:
+    """
+    Enforces authentication & authorization under FDA Premarket Cybersecurity (§524B) & OWASP API.
+    In production mode (ACUCALYX_REQUIRE_AUTH=1), rejects unauthenticated calls with HTTP 401.
+    In local development/test mode, falls back to authenticated test context with audit warning.
+    """
+    token = bearer.credentials if bearer else api_key
+    expected_token = os.getenv("ACUCALYX_API_TOKEN")
+
+    if os.getenv("ACUCALYX_REQUIRE_AUTH", "0") == "1":
+        if not token:
+            raise HTTPException(status_code=401, detail="Authentication required: X-AcuCalyx-API-Key or Bearer token missing.")
+        if expected_token and token != expected_token:
+            raise HTTPException(status_code=403, detail="Forbidden: Invalid credentials.")
+        return {"clinician_id": "AUTH_CLINICIAN_01", "role": "ATTENDING_ENDOUROLOGIST", "authenticated": True}
+
+    return {
+        "clinician_id": "CLINICIAN_LEAD_01",
+        "role": "ATTENDING_ENDOUROLOGIST",
+        "authenticated": bool(token),
+        "auth_mode": "DEVELOPMENT_PERMISSIVE" if not token else "TOKEN_VERIFIED"
+    }
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIR = BASE_DIR / "app" / "frontend"
 FRONTEND_DIR.mkdir(parents=True, exist_ok=True)
@@ -158,7 +191,7 @@ def create_demo_case():
     Provides immediate testing without requiring external DICOM uploads.
     """
     case_id = f"DEMO_PHANTOM_{datetime.now().strftime('%H%M%S')}"
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     raw_dir = case_dir / "raw"
     artifacts_dir = case_dir / "artifacts"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -282,11 +315,18 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
                     shutil.rmtree(case_dir, ignore_errors=True)
                     raise HTTPException(status_code=400, detail=f"Archive uncompressed size ({total_uncompressed // (1024*1024)} MB) exceeds limit.")
                 for member in infolist:
-                    member_path = (extract_dir / member.filename).resolve()
-                    if not str(member_path).startswith(str(extract_dir.resolve())):
+                    if member.is_dir():
+                        continue
+                    if ".." in member.filename or member.filename.startswith("/") or member.filename.startswith("\\"):
                         shutil.rmtree(case_dir, ignore_errors=True)
                         raise HTTPException(status_code=400, detail=f"Illegal path in archive: {member.filename}")
-                z.extractall(extract_dir)
+                    member_path = (extract_dir / member.filename).resolve()
+                    if not member_path.is_relative_to(extract_dir.resolve()):
+                        shutil.rmtree(case_dir, ignore_errors=True)
+                        raise HTTPException(status_code=400, detail=f"Illegal path escape in archive: {member.filename}")
+                    member_path.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(member) as src_f, open(member_path, "wb") as dst_f:
+                        shutil.copyfileobj(src_f, dst_f)
         except zipfile.BadZipFile:
             shutil.rmtree(case_dir, ignore_errors=True)
             raise HTTPException(status_code=400, detail="Corrupted or invalid ZIP archive.")
@@ -295,7 +335,7 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
         input_file_count = len(dcm_files)
         input_path = extract_dir
 
-        # HIPAA / PS 3.15 Basic Application Level Confidentiality Profile Guard
+        # HIPAA / PS 3.15 Basic Application Level Confidentiality Profile Guard (Fail-Closed)
         phi_guard = PHIGuard()
         scrubbed_count = 0
         for dcm_file in dcm_files:
@@ -307,7 +347,9 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
                     scrubbed.save_as(str(dcm_file))
                     scrubbed_count += 1
             except Exception as e:
-                logger.debug(f"Skip during de-identification of {dcm_file}: {e}")
+                logger.error(f"Fail-closed: DICOM de-identification failed on {dcm_file.name}: {e}")
+                shutil.rmtree(case_dir, ignore_errors=True)
+                raise HTTPException(status_code=422, detail=f"HIPAA/PS 3.15 de-identification failed on {dcm_file.name}: {e}")
         if scrubbed_count > 0:
             logger.info(f"PHIGuard: Successfully scrubbed direct PHI from {scrubbed_count} slices for case {case_id}")
             log_case_audit_event(case_id, "PHI_SCRUBBED_INGESTION", {"scrubbed_slices": scrubbed_count})
@@ -320,7 +362,23 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
             scrubbed.save_as(str(dest_path))
             log_case_audit_event(case_id, "PHI_SCRUBBED_INGESTION", {"scrubbed_slices": 1})
         except Exception as e:
-            logger.debug(f"Single DICOM de-identification skipped: {e}")
+            logger.error(f"Fail-closed: Single DICOM de-identification failed: {e}")
+            shutil.rmtree(case_dir, ignore_errors=True)
+            raise HTTPException(status_code=422, detail=f"HIPAA/PS 3.15 de-identification failed on DICOM: {e}")
+    elif safe_filename.lower().endswith((".nii", ".nii.gz")):
+        try:
+            import nibabel as nib
+            img = nib.load(str(dest_path))
+            header = img.header
+            if hasattr(header, "get"):
+                if "descrip" in header:
+                    header["descrip"] = b""
+                if "aux_file" in header:
+                    header["aux_file"] = b""
+            img.to_filename(str(dest_path))
+            log_case_audit_event(case_id, "NIFTI_HEADER_SCRUBBED", {"filename": safe_filename})
+        except Exception as e:
+            logger.debug(f"NIfTI header scrub note: {e}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
@@ -403,10 +461,22 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
                     f"but verified clinical laterality is '{confirmed_side}'. Re-verify laterality."
                 )
             )
+
+        # Server-side enforcement of Operative Position Gate (Interlock U2)
+        pos_conf = meta.get("surgical_position_confirmation")
+        if not pos_conf or not pos_conf.get("is_confirmed", False):
+            raise HTTPException(
+                status_code=412,
+                detail=(
+                    "Precondition Failed: Interlock U2 Operative Pose Gate must be completed "
+                    "and signed off by the clinician before access planning can proceed."
+                )
+            )
     pipeline_cfg = {
         "coarse_step_mm": req.coarse_step_mm,
         "monte_carlo_samples": req.monte_carlo_samples,
-        "allow_marginal": req.allow_marginal
+        "allow_marginal": req.allow_marginal,
+        "pending_overrides": meta.get("pending_overrides", [])
     }
 
     if is_demo:
@@ -467,7 +537,25 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
         meta["stone_count"] = len(res.stones)
         meta["candidate_count"] = len(res.candidates)
         meta["is_stale"] = False
-        meta["active_candidate_id"] = res.candidates[0].candidate_id if res.candidates else None
+
+        # Select candidate trajectory without critical hazard breaches
+        selected_candidate = None
+        for c in res.candidates:
+            has_crit = any(getattr(h, "is_intersecting", False) for h in getattr(c, "hazard_evaluations", []))
+            if not has_crit:
+                selected_candidate = c
+                break
+        if selected_candidate is None and res.candidates:
+            selected_candidate = res.candidates[0]
+
+        meta["active_candidate_id"] = selected_candidate.candidate_id if selected_candidate else None
+
+        # Apply pending overrides and resolve STALE status
+        if meta.get("pending_overrides"):
+            meta["applied_overrides"] = meta.get("applied_overrides", []) + meta["pending_overrides"]
+            meta["pending_overrides"] = []
+            meta["override_pending"] = False
+
         meta["clinical_notice"] = f"Generated {len(res.candidates)} Pareto candidate trajectories."
 
     save_case_meta(case_id, meta)
@@ -483,7 +571,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
 @app.get("/api/cases/{case_id}/quality")
 def get_quality_metrics(case_id: str):
     """Returns the fail-closed DICOM quality gate results."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     q_file = case_dir / "artifacts" / "quality.json"
     if not q_file.is_file():
         raise HTTPException(status_code=404, detail="Quality report not found. Has planning been run?")
@@ -494,7 +582,7 @@ def get_quality_metrics(case_id: str):
 @app.get("/api/cases/{case_id}/stones", response_model=List[StoneMetricItem])
 def get_stone_metrics(case_id: str):
     """Returns detected kidney stones with true 3D volumetry and attenuation statistics."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     s_file = case_dir / "artifacts" / "stones.json"
     if not s_file.is_file():
         raise HTTPException(status_code=404, detail="Stone metrics not found. Has planning been run?")
@@ -506,7 +594,7 @@ def get_stone_metrics(case_id: str):
 @app.get("/api/cases/{case_id}/candidates", response_model=List[CandidateTrajectoryItem])
 def get_candidate_trajectories(case_id: str):
     """Returns all computed Pareto access trajectories with clinical trade-offs and safety badges."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     c_file = case_dir / "artifacts" / "candidates.json"
     u_file = case_dir / "artifacts" / "uncertainty.json"
     if not c_file.is_file():
@@ -581,7 +669,7 @@ def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
     guards against stale plans, logs auditable event, and transitions case state to CLINICIAN_REVIEW.
     """
     meta = load_case_meta(case_id)
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
 
     # Guard 1: Stale plan rejection
     if meta.get("is_stale", False):
@@ -633,7 +721,7 @@ def clinician_override(case_id: str, req: ManualOverrideRequest):
     clears active trajectory, records pending override details, and requires re-planning.
     """
     meta = load_case_meta(case_id)
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     artifacts_dir = case_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -689,7 +777,7 @@ def get_candidate_comparison_matrix(case_id: str):
     Emits typed MetricValue records with uncertainty flags.
     """
     meta = load_case_meta(case_id)
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     artifacts_dir = case_dir / "artifacts"
     c_file = artifacts_dir / "candidates.json"
     s_file = artifacts_dir / "stones.json"
@@ -888,7 +976,7 @@ def get_candidate_comparison_matrix(case_id: str):
 @app.get("/api/cases/{case_id}/meshes/{mesh_name}")
 def get_case_mesh(case_id: str, mesh_name: str):
     """Streams binary GLB 3D surface meshes for Three.js WebGL visualization."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     # Clean filename
     clean_name = mesh_name if mesh_name.endswith(".glb") else f"{mesh_name}.glb"
     mesh_path = case_dir / "artifacts" / "meshes" / clean_name
@@ -993,7 +1081,7 @@ def get_mpr_slice(
 
     # Check if active trajectory intersects this slice
     active_cand_id = meta.get("active_candidate_id")
-    c_file = CASES_DIR / case_id / "artifacts" / "candidates.json"
+    c_file = get_case_dir(case_id) / "artifacts" / "candidates.json"
     if active_cand_id and c_file.is_file():
         with open(c_file, "r") as f:
             cands = json.load(f)
@@ -1114,7 +1202,7 @@ def get_case_nephrolithometry(case_id: str):
     """
     from acucalyx.stones.scoring import compute_guys_stone_score, compute_stone_nephrolithometry
 
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     s_file = case_dir / "artifacts" / "stones.json"
     c_file = case_dir / "artifacts" / "candidates.json"
 
@@ -1182,7 +1270,7 @@ def get_case_nephrolithometry(case_id: str):
 @app.get("/api/cases/{case_id}/fluoroscopy/{candidate_id}")
 def get_virtual_fluoroscopy(case_id: str, candidate_id: str):
     """Returns virtual fluoroscopy C-arm viewing vectors and 2D projected needle coordinates."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     c_file = case_dir / "artifacts" / "candidates.json"
     if not c_file.is_file():
         raise HTTPException(status_code=404, detail="Case artifacts not found")
@@ -1233,11 +1321,25 @@ def get_virtual_fluoroscopy(case_id: str, candidate_id: str):
 
 
 def _ensure_planning_report(case_id: str) -> Path:
-    """Ensures that the 2-page Preoperative Planning PDF Report and keyframes exist, generating dynamically if needed."""
-    case_dir = CASES_DIR / case_id
+    """Ensures that the 2-page Preoperative Planning PDF Report and keyframes exist, validating freshness against plan hash."""
+    case_dir = get_case_dir(case_id)
     pdf_path = case_dir / "artifacts" / "report.pdf"
-    if pdf_path.is_file() and pdf_path.stat().st_size > 500:
-        return pdf_path
+    report_meta_file = case_dir / "artifacts" / "report_meta.json"
+    meta = load_case_meta(case_id)
+
+    is_stale = meta.get("is_stale", False)
+    current_plan_hash = meta.get("plan_hash") or meta.get("updated_at")
+    active_cand = meta.get("active_candidate_id")
+
+    # Fast-return cached PDF only if strictly non-stale, matches plan hash and active candidate
+    if pdf_path.is_file() and pdf_path.stat().st_size > 500 and not is_stale and report_meta_file.is_file():
+        try:
+            with open(report_meta_file, "r") as rf:
+                rmeta = json.load(rf)
+                if rmeta.get("plan_hash") == current_plan_hash and rmeta.get("active_candidate_id") == active_cand:
+                    return pdf_path
+        except Exception:
+            pass
 
     artifacts_dir = case_dir / "artifacts"
     q_file = artifacts_dir / "quality.json"
@@ -1245,8 +1347,6 @@ def _ensure_planning_report(case_id: str) -> Path:
 
     if not (c_file.is_file() and q_file.is_file()):
         raise HTTPException(status_code=404, detail="Planning report PDF not found. Run planning first.")
-
-    meta = load_case_meta(case_id)
     with open(q_file, "r") as f:
         q_data = json.load(f)
 
@@ -1347,8 +1447,7 @@ def _ensure_planning_report(case_id: str) -> Path:
             reachable_stone_fraction=c.get("reachable_stone_fraction", 0.8),
             access_rib_classification=c.get("access_rib_classification", "SUBCOSTAL_12"),
             required_scope_deflection_deg=c.get("required_scope_deflection_deg", 15.0),
-            is_pareto_optimal=c.get("is_pareto_optimal", True),
-            pareto_rank=1
+            is_pareto_optimal=c.get("is_pareto_optimal", True)
         ))
 
     cached = get_cached_volume(case_id)
@@ -1357,7 +1456,11 @@ def _ensure_planning_report(case_id: str) -> Path:
 
     lat_conf = meta.get("laterality_confirmation")
     pos_conf = meta.get("surgical_position_confirmation")
-    verified_lat = lat_conf.get("verified_laterality") if lat_conf else meta.get("target_side", "LEFT").upper()
+    if lat_conf:
+        raw_side = lat_conf.get("confirmed_side") or lat_conf.get("verified_laterality") or meta.get("target_side", "LEFT")
+        verified_lat = str(raw_side).upper()
+    else:
+        verified_lat = meta.get("target_side", "LEFT").upper()
     confirmed_pos = pos_conf.get("operative_position") if pos_conf else "PRONE_STANDARD"
 
     generate_preoperative_planning_pdf(
@@ -1374,6 +1477,17 @@ def _ensure_planning_report(case_id: str) -> Path:
         volume_hu=vol,
         spatial=spatial
     )
+
+    try:
+        with open(report_meta_file, "w", encoding="utf-8") as rf:
+            json.dump({
+                "plan_hash": current_plan_hash,
+                "active_candidate_id": active_cand,
+                "generated_at": now_iso
+            }, rf, indent=2)
+    except Exception as e:
+        logger.warning(f"Could not persist report metadata: {e}")
+
     return pdf_path
 
 
@@ -1393,7 +1507,7 @@ def download_planning_report(case_id: str):
 def get_case_keyframe(case_id: str, keyframe_name: str):
     """Streams server-rendered keyframe PNG image (axial, coronal, bullseye)."""
     clean_name = keyframe_name if keyframe_name.endswith(".png") else f"{keyframe_name}.png"
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     kf_path = case_dir / "artifacts" / "keyframes" / clean_name
 
     if not kf_path.is_file():
@@ -1413,7 +1527,7 @@ def get_case_keyframe(case_id: str, keyframe_name: str):
 @app.get("/api/cases/{case_id}/provenance")
 def get_case_provenance(case_id: str):
     """Downloads the cryptographic SHA-256 case provenance manifest."""
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     prov_path = case_dir / "artifacts" / "provenance.json"
     if not prov_path.is_file():
         raise HTTPException(status_code=404, detail="Provenance record not found.")
@@ -1448,3 +1562,14 @@ app.include_router(validation_router)
 # Mount Frontend UI Static Files
 if FRONTEND_DIR.exists():
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+
+
+def run_server():
+    """CLI entrypoint for AcuCalyx application server."""
+    import uvicorn
+    uvicorn.run("app.api.main:app", host="0.0.0.0", port=8000, reload=False)
+
+
+if __name__ == "__main__":
+    run_server()
+

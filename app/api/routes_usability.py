@@ -12,6 +12,7 @@ Provides REST endpoints for:
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
@@ -61,13 +62,13 @@ class LateralityConfirmRequest(BaseModel):
     clinician_selected_side: str  # 'LEFT' or 'RIGHT'
     ct_metadata_side: str
     landmark_checks: Dict[str, bool] = Field(default_factory=dict)
-    is_two_step_confirmed: bool = True
+    is_two_step_confirmed: bool = False
 
 
 class PositionConfirmRequest(BaseModel):
     ct_acquisition_position: str = "HFS"
     planned_operative_position: SurgicalPatientPosition = SurgicalPatientPosition.PRONE_STANDARD
-    is_clinician_confirmed: bool = True
+    is_clinician_confirmed: bool = False
 
 
 class DepthCheckRequest(BaseModel):
@@ -112,7 +113,7 @@ class SUSCohortRequest(BaseModel):
 
 class StartSessionRequest(BaseModel):
     investigator_id: str = "Investigator_01"
-    session_id: Optional[str] = None
+    session_id: Optional[str] = Field(None, pattern=r"^[A-Za-z0-9_-]{3,64}$")
 
 
 class UsabilityTrialSubmissionRequest(BaseModel):
@@ -600,11 +601,33 @@ def get_surgeon_discovery_markdown():
     return Response(content=md, media_type="text/markdown")
 
 
+SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{3,64}$")
+
+
+def _get_session_file(session_id: str) -> Path:
+    """Validates session_id against strict regex and verifies directory containment."""
+    if not session_id or not SESSION_ID_PATTERN.match(session_id):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid session_id '{session_id}'. Must be 3-64 alphanumeric characters, underscores, or hyphens."
+        )
+    target_path = (USABILITY_SESSIONS_DIR / f"{session_id}.json").resolve()
+    base_dir = USABILITY_SESSIONS_DIR.resolve()
+    if not target_path.is_relative_to(base_dir):
+        raise HTTPException(status_code=400, detail="Security violation: usability session path traversal detected.")
+    return target_path
+
+
 def _load_session(session_id: str) -> Optional[UsabilityStudySession]:
     """Loads a usability study session from in-memory cache or persisted JSON on disk."""
+    if not session_id or not SESSION_ID_PATTERN.match(session_id):
+        return None
     if session_id in _ACTIVE_SESSIONS:
         return _ACTIVE_SESSIONS[session_id]
-    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
+    try:
+        session_file = _get_session_file(session_id)
+    except HTTPException:
+        return None
     if not session_file.is_file():
         return None
     try:
@@ -696,21 +719,23 @@ def start_usability_session(request: StartSessionRequest):
     """Initializes a new formative usability testing session."""
     now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     session_id = request.session_id or f"SESS_USABILITY_{now_str}"
+    session_file = _get_session_file(session_id)
     session = UsabilityStudySession(
         session_id=session_id,
         investigator_id=request.investigator_id
     )
     _ACTIVE_SESSIONS[session_id] = session
 
-    # Persist session descriptor
-    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
-    with open(session_file, "w", encoding="utf-8") as f:
+    # Persist session descriptor atomically
+    temp_file = session_file.with_suffix(f".tmp_{datetime.now().strftime('%H%M%S%f')}")
+    with open(temp_file, "w", encoding="utf-8") as f:
         json.dump({
             "session_id": session_id,
             "investigator_id": request.investigator_id,
             "created_at": session.created_at,
             "trials": []
         }, f, indent=2)
+    temp_file.replace(session_file)
 
     return {
         "session_id": session_id,
@@ -791,15 +816,17 @@ def submit_usability_trial(session_id: str, request: UsabilityTrialSubmissionReq
 
     session.record_trial(trial_rec)
 
-    # Persist updated session to disk
-    session_file = USABILITY_SESSIONS_DIR / f"{session_id}.json"
-    with open(session_file, "w", encoding="utf-8") as f:
+    # Persist updated session to disk atomically
+    session_file = _get_session_file(session_id)
+    temp_file = session_file.with_suffix(f".tmp_{datetime.now().strftime('%H%M%S%f')}")
+    with open(temp_file, "w", encoding="utf-8") as f:
         json.dump({
             "session_id": session_id,
             "investigator_id": session.investigator_id,
             "created_at": session.created_at,
             "trials": [t.to_dict() for t in session.trials]
         }, f, indent=2)
+    temp_file.replace(session_file)
 
     return {
         "status": "RECORDED",

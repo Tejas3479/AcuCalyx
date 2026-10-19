@@ -127,6 +127,63 @@ class Phase0FeasibilityReport:
 # Multi-Reader Consensus & Disagreement Preservation
 # =============================================================================
 
+def compute_staple_em_consensus(
+    mask_stack: np.ndarray,
+    max_iter: int = 30,
+    tol: float = 1e-4,
+    prior: float = 0.1
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Computes Expectation-Maximization STAPLE (Warfield et al. 2004) consensus segmentation.
+    
+    Args:
+        mask_stack: Binary masks array of shape (N_raters, ...).
+        max_iter: Maximum EM iterations.
+        tol: Convergence tolerance for parameters.
+        prior: Global prior probability of foreground voxel.
+        
+    Returns:
+        W: Posterior probability field of true segmentation (shape of single mask).
+        p: Sensitivity vector per reader (N_raters).
+        q: Specificity vector per reader (N_raters).
+    """
+    num_raters = mask_stack.shape[0]
+    p = np.full(num_raters, 0.90, dtype=float)
+    q = np.full(num_raters, 0.95, dtype=float)
+    eps = 1e-7
+    W = np.mean(mask_stack, axis=0)
+
+    for _ in range(max_iter):
+        log_a = np.zeros_like(W)
+        log_b = np.zeros_like(W)
+        for j in range(num_raters):
+            D_j = mask_stack[j]
+            log_a += D_j * np.log(np.clip(p[j], eps, 1.0 - eps)) + (1.0 - D_j) * np.log(np.clip(1.0 - p[j], eps, 1.0 - eps))
+            log_b += (1.0 - D_j) * np.log(np.clip(q[j], eps, 1.0 - eps)) + D_j * np.log(np.clip(1.0 - q[j], eps, 1.0 - eps))
+
+        a = np.exp(np.clip(log_a, -50, 50)) * prior
+        b = np.exp(np.clip(log_b, -50, 50)) * (1.0 - prior)
+        W_new = a / (a + b + eps)
+
+        sum_W = np.sum(W_new) + eps
+        sum_1_minus_W = np.sum(1.0 - W_new) + eps
+        p_new = np.zeros(num_raters)
+        q_new = np.zeros(num_raters)
+        for j in range(num_raters):
+            D_j = mask_stack[j]
+            p_new[j] = np.sum(W_new * D_j) / sum_W
+            q_new[j] = np.sum((1.0 - W_new) * (1.0 - D_j)) / sum_1_minus_W
+
+        diff = np.max(np.abs(p_new - p)) + np.max(np.abs(q_new - q))
+        p = np.clip(p_new, 0.1, 0.999)
+        q = np.clip(q_new, 0.1, 0.999)
+        W = W_new
+        if diff < tol:
+            break
+
+    return W, p, q
+
+
 class MultiReaderConsensusAnalyzer:
     """
     Synthesizes independent clinical reader segmentations into an adjudicated reference
@@ -176,16 +233,20 @@ class MultiReaderConsensusAnalyzer:
 
         mean_dice = float(np.mean(dice_values)) if dice_values else 0.0
 
-        # 2. Voxel-wise Probabilistic Voting (STAPLE / Majority Consensus)
-        # Sum binary masks across readers
+        # 2. Voxel-wise Consensus via EM-STAPLE (Warfield et al. 2004) & Ambiguity Mapping
         mask_stack = np.stack([a.lumen_binary_mask.astype(float) for a in annotations], axis=0)
-        prob_map = np.mean(mask_stack, axis=0)  # [0.0, 1.0]
+        try:
+            staple_prob, _, _ = compute_staple_em_consensus(mask_stack)
+            prob_map = staple_prob
+        except Exception:
+            prob_map = np.mean(mask_stack, axis=0)
 
-        # Consensus mask: majority voting threshold >= 0.5
+        # Adjudicated binary consensus mask: probability threshold >= 0.5
         consensus_mask = prob_map >= 0.5
 
         # Ambiguity zone: voxels where at least one reader included but not unanimous
-        ambiguity_mask = np.logical_and(prob_map > 0.0, prob_map < 1.0)
+        raw_mean = np.mean(mask_stack, axis=0)
+        ambiguity_mask = np.logical_and(raw_mean > 0.0, raw_mean < 1.0)
         ambiguity_vol_mm3 = float(ambiguity_mask.sum() * vox_vol)
 
         # 3. Calyx Landmark Consensus & Spatial Dispersion
