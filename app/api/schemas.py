@@ -108,6 +108,14 @@ class CaseSummaryResponse(BaseModel):
     stone_count: int = 0
     candidate_count: int = 0
     clinical_notice: str = ""
+    owner_doctor_id: Optional[str] = "DOC_ELENA_CHEN"
+    owner_doctor_name: Optional[str] = "Dr. Elena Chen, MD, FACS"
+    patient_id: Optional[str] = "PT-7821"
+    patient_age: Optional[int] = 56
+    patient_sex: Optional[str] = "M"
+    clinical_indication: Optional[str] = "Complex lower pole calculus (GSS II)"
+    scheduled_procedure_date: Optional[str] = None
+    privacy_status: Optional[str] = "RESTRICTED_ATTENDING_ONLY"
 
 
 class PlanGenerationRequest(BaseModel):

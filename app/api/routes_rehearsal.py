@@ -35,11 +35,9 @@ from acucalyx.validation.procedural_evaluator import (
     TargetFornicealZone,
     compute_exact_clopper_pearson_upper_bound,
 )
+from app.api.case_store import get_case_dir, validate_case_id, resolve_case_input_path
 
 router = APIRouter(prefix="/api", tags=["rehearsal_and_phantom"])
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CASES_DIR = BASE_DIR / "data" / "cases"
 
 
 class CTScanValidationRequest(BaseModel):
@@ -98,7 +96,7 @@ def validate_phantom_ct_scan(request: CTScanValidationRequest):
 
 
 def _load_case_trajectory_or_nominal(case_id: str, candidate_id: Optional[str] = None):
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     meta_path = case_dir / "case_meta.json"
     cand_path = case_dir / "artifacts" / "candidates.json"
 
@@ -120,9 +118,8 @@ def _load_case_trajectory_or_nominal(case_id: str, candidate_id: Optional[str] =
             with open(meta_path, "r") as f:
                 meta = json.load(f)
                 laterality = (meta.get("target_side") or meta.get("target_kidney_side", "left")).upper()
-                if "input_path" in meta:
-                    inp = Path(meta["input_path"])
-                    if inp.is_file() and (inp.name.endswith(".nii.gz") or inp.name.endswith(".nii")):
+                inp = resolve_case_input_path(case_id, meta)
+                if inp.is_file() and (inp.name.endswith(".nii.gz") or inp.name.endswith(".nii")):
                         from acucalyx.ingestion.nifti import load_research_nifti
                         res = load_research_nifti(inp)
                         spatial = res.spatial_orientation

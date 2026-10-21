@@ -39,15 +39,13 @@ from acucalyx.fluoroscopy.virtual_contrast import (
 from acucalyx.geometry.transforms import LineSegment3D
 from acucalyx.ingestion.dicom import load_dicom_series
 from acucalyx.ingestion.nifti import load_research_nifti
+from app.api.case_store import get_case_dir, validate_case_id, resolve_case_input_path
 
 router = APIRouter(prefix="/api/cases/{case_id}/drr", tags=["Fluoroscopy DRR"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CASES_DIR = BASE_DIR / "data" / "cases"
-
 
 def _load_case_data_and_candidate(case_id: str, candidate_id: str):
-    case_dir = CASES_DIR / case_id
+    case_dir = get_case_dir(case_id)
     meta_path = case_dir / "case_meta.json"
     cand_path = case_dir / "artifacts" / "candidates.json"
 
@@ -64,7 +62,7 @@ def _load_case_data_and_candidate(case_id: str, candidate_id: str):
     if not cand:
         raise HTTPException(status_code=404, detail=f"Candidate {candidate_id} not found.")
 
-    input_path = Path(meta["input_path"])
+    input_path = resolve_case_input_path(case_id, meta)
     
     # Check if active volume cache from main module has this case
     try:
@@ -115,7 +113,7 @@ def get_bullseye_drr_image(
     # Optional virtual contrast
     if enable_contrast:
         # Load collecting system mask if available
-        pcs_file = CASES_DIR / case_id / "artifacts" / "collecting_system.npy"
+        pcs_file = get_case_dir(case_id) / "artifacts" / "collecting_system.npy"
         pcs_mask = np.load(pcs_file) if pcs_file.is_file() else None
         vol_drr = apply_virtual_contrast_to_volume(volume, pcs_mask, VirtualContrastMode.MODE_B_ATTENUATION_BOOST)
     else:
@@ -159,7 +157,7 @@ def get_depth_verification_drr_image(
     pose = construct_depth_verification_carm_pose(traj, oblique_angle_offset_deg=oblique_angle_deg, profile=profile)
 
     if enable_contrast:
-        pcs_file = CASES_DIR / case_id / "artifacts" / "collecting_system.npy"
+        pcs_file = get_case_dir(case_id) / "artifacts" / "collecting_system.npy"
         pcs_mask = np.load(pcs_file) if pcs_file.is_file() else None
         vol_drr = apply_virtual_contrast_to_volume(volume, pcs_mask, VirtualContrastMode.MODE_B_ATTENUATION_BOOST)
     else:
@@ -197,7 +195,7 @@ def get_alara_report(
 
     # Read verified case laterality
     target_side = "left"
-    meta_path = CASES_DIR / case_id / "case_meta.json"
+    meta_path = get_case_dir(case_id) / "case_meta.json"
     if meta_path.is_file():
         try:
             with open(meta_path, "r", encoding="utf-8") as f:

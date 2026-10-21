@@ -50,17 +50,16 @@ from acucalyx.ultrasound.reference_registry import (
     PCNLUltrasoundReferenceRegistry,
     STANDARD_DUAL_MODAL_PHANTOM_SPEC,
 )
+from app.api.case_store import get_case_dir, validate_case_id
 
 router = APIRouter(prefix="/api/cases", tags=["Ultrasound Simulation & Positioning Uncertainty"])
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CASES_DIR = BASE_DIR / "data" / "cases"
 
 
 def _get_candidate_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]:
     """Helper to locate candidate trajectory from artifacts/candidates.json or case_meta.json."""
+    case_dir = get_case_dir(case_id)
     # 1. Primary source: artifacts/candidates.json
-    cand_path = CASES_DIR / case_id / "artifacts" / "candidates.json"
+    cand_path = case_dir / "artifacts" / "candidates.json"
     if cand_path.is_file():
         try:
             with open(cand_path, "r", encoding="utf-8") as f:
@@ -90,7 +89,7 @@ def _get_candidate_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]
             pass
 
     # 2. Secondary source: case_meta.json
-    meta_path = CASES_DIR / case_id / "case_meta.json"
+    meta_path = case_dir / "case_meta.json"
     if meta_path.is_file():
         try:
             with open(meta_path, "r", encoding="utf-8") as f:
@@ -133,6 +132,7 @@ def _get_candidate_trajectory(case_id: str, candidate_id: str) -> Dict[str, Any]
 @router.get("/{case_id}/us/probes")
 def list_ultrasound_probes(case_id: str) -> Dict[str, Any]:
     """Returns catalog of standard ultrasound transducer profiles for PCNL access planning."""
+    validate_case_id(case_id)
     probes_list = []
     for pid, p in STANDARD_PROBES.items():
         probes_list.append({
@@ -157,6 +157,7 @@ def list_ultrasound_probes(case_id: str) -> Dict[str, Any]:
 @router.get("/{case_id}/us/reference-registry")
 def get_reference_registry_summary(case_id: str) -> Dict[str, Any]:
     """Returns Milestone M14.0 certified phantom specs and reference dataset catalog."""
+    validate_case_id(case_id)
     registry = PCNLUltrasoundReferenceRegistry.create_standard_registry()
     cases_summary = []
     for rc in registry.list_cases():
@@ -231,8 +232,11 @@ def get_simulated_bmode_image(
     if cached is not None and "volume" in cached and "spatial" in cached:
         vol = cached["volume"]
         spatial = cached["spatial"]
-        spacing = (spatial.slice_thickness, spatial.pixel_spacing[1], spatial.pixel_spacing[0])
-        origin = (spatial.origin[2], spatial.origin[1], spatial.origin[0])
+        dz = float(spatial.spacing[2]) if hasattr(spatial, "spacing") else getattr(spatial, "slice_thickness", 1.0)
+        dy = float(spatial.spacing[0]) if hasattr(spatial, "spacing") else getattr(spatial, "pixel_spacing", [1.0, 1.0])[0]
+        dx = float(spatial.spacing[1]) if hasattr(spatial, "spacing") else getattr(spatial, "pixel_spacing", [1.0, 1.0])[1]
+        spacing = (dz, dy, dx)
+        origin = (float(spatial.origin[2]), float(spatial.origin[1]), float(spatial.origin[0]))
         result = sim.simulate_from_ct_volume(
             ct_volume=vol,
             voxel_spacing_mm=spacing,

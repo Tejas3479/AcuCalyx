@@ -55,30 +55,23 @@ from acucalyx.endoscopy.reachability_validator import (
     M15ValidationGateReport,
     evaluate_m15_validation_gate,
 )
+from app.api.case_store import get_case_dir, validate_case_id
 
 import re
 import tempfile
-
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-CASES_DIR = BASE_DIR / "data" / "cases"
 
 router = APIRouter(prefix="/api/cases", tags=["Endoscopic Reachability & Virtual Nephroscopy"])
 
 
 def _validate_case_id(case_id: str) -> str:
     """Validates that case_id is a secure identifier and prevents directory traversal."""
-    if not re.match(r"^[A-Za-z0-9_-]+$", case_id):
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid case identifier '{case_id}'. Must contain only alphanumeric characters, hyphens, or underscores."
-        )
-    return case_id
+    return validate_case_id(case_id)
 
 
 def _get_case_graph(case_id: str, demo_mode: bool = False) -> CollectingSystemGraph:
     """Builds or loads the collecting system graph for a specified case."""
-    _validate_case_id(case_id)
-    graph_path = CASES_DIR / case_id / "artifacts" / "graph.json"
+    case_dir = get_case_dir(case_id)
+    graph_path = case_dir / "artifacts" / "graph.json"
     if graph_path.is_file():
         try:
             return CollectingSystemGraph.load_from_json(graph_path)
@@ -102,7 +95,8 @@ def _get_case_graph(case_id: str, demo_mode: bool = False) -> CollectingSystemGr
 
 def _get_case_trajectory(case_id: str, candidate_id: str, demo_mode: bool = False) -> Dict[str, Any]:
     """Retrieves candidate percutaneous trajectory metadata."""
-    cand_path = CASES_DIR / case_id / "artifacts" / "candidates.json"
+    case_dir = get_case_dir(case_id)
+    cand_path = case_dir / "artifacts" / "candidates.json"
     candidates = []
     if cand_path.is_file():
         try:
@@ -112,7 +106,7 @@ def _get_case_trajectory(case_id: str, candidate_id: str, demo_mode: bool = Fals
             candidates = []
 
     if not candidates:
-        meta_path = CASES_DIR / case_id / "case_meta.json"
+        meta_path = case_dir / "case_meta.json"
         if meta_path.is_file():
             try:
                 with open(meta_path, "r") as f:
@@ -157,7 +151,8 @@ def _get_case_trajectory(case_id: str, candidate_id: str, demo_mode: bool = Fals
 
 def _get_case_stones(case_id: str, demo_mode: bool = False) -> List[StoneBurdenUnit]:
     """Retrieves segmented calculus burden for case, or representative demo stones in demo mode."""
-    stones_path = CASES_DIR / case_id / "artifacts" / "stones.json"
+    case_dir = get_case_dir(case_id)
+    stones_path = case_dir / "artifacts" / "stones.json"
     stones_raw = []
     if stones_path.is_file():
         try:
@@ -167,7 +162,7 @@ def _get_case_stones(case_id: str, demo_mode: bool = False) -> List[StoneBurdenU
             stones_raw = []
 
     if not stones_raw:
-        meta_path = CASES_DIR / case_id / "case_meta.json"
+        meta_path = case_dir / "case_meta.json"
         if meta_path.is_file():
             try:
                 with open(meta_path, "r") as f:
@@ -351,6 +346,7 @@ def get_trajectory_reachability(
     )
 
     results_out = {}
+    calyces_reachability = []
     for cid, res in report.calyx_results.items():
         results_out[cid] = {
             "calyx_id": res.calyx_id,
@@ -371,6 +367,16 @@ def get_trajectory_reachability(
             "alternative_strategies": res.alternative_strategies,
             "rationale": res.rationale,
         }
+        strain = "NONE (DIRECT)" if res.required_deflection_deg == 0 else ("LOW" if res.required_deflection_deg < 45 else "MODERATE")
+        group_name = res.calyx_group.capitalize() if res.calyx_group else ""
+        calyces_reachability.append({
+            "calyx_id": res.calyx_id,
+            "calyx_name": f"{group_name} Calyx ({res.calyx_id})" if group_name else f"Calyx {res.calyx_id}",
+            "deflection_deg": round(res.required_deflection_deg, 1),
+            "strain": strain,
+            "is_reachable": res.is_reachable,
+            "status": res.status.value,
+        })
 
     return {
         "case_id": case_id,
@@ -390,6 +396,7 @@ def get_trajectory_reachability(
         "sheath_tip_lps_mm": [round(float(v), 2) for v in report.sheath_tip_lps_mm],
         "strategic_advisory": report.strategic_advisory,
         "calyces": results_out,
+        "calyces_reachability": calyces_reachability,
     }
 
 
