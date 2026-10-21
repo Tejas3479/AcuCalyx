@@ -93,11 +93,14 @@ body {
 .app-header {
   background-color: var(--bg-surface);
   border-bottom: 1px solid var(--border-color);
-  padding: 10px 20px;
+  padding: 6px 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   flex-shrink: 0;
+  height: 50px;
+  white-space: nowrap;
 }
 
 .logo-section {
@@ -133,24 +136,42 @@ body {
 .case-controls {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 1;
+  min-width: 0;
+  white-space: nowrap;
 }
 
 select.case-select {
   background-color: var(--bg-surface-elevated);
   color: var(--text-primary);
   border: 1px solid var(--border-color);
-  padding: 6px 12px;
+  padding: 4px 8px;
   border-radius: 6px;
-  font-size: 12px;
+  font-size: 11.5px;
   font-family: inherit;
   outline: none;
   cursor: pointer;
-  min-width: 220px;
+  width: 130px;
+  max-width: 140px;
+  min-width: 100px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
 }
 
 select.case-select:focus {
   border-color: var(--accent-cyan);
+}
+
+.btn-sm {
+  padding: 4px 8px !important;
+  font-size: 11px !important;
+  height: 28px !important;
+  white-space: nowrap !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
 }
 
 .state-badge {
@@ -217,18 +238,19 @@ select.case-select:focus {
 
 /* Left Sidebar: Controls & Patient Info */
 .sidebar-left {
-  width: 320px;
+  width: 285px;
   background-color: var(--bg-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   overflow-y: auto;
   flex-shrink: 0;
+  height: 100%;
 }
 
 /* Right Sidebar: Decision Matrix */
 .sidebar-right {
-  width: 360px;
+  width: 325px;
   background-color: var(--bg-surface);
   border-left: 1px solid var(--border-color);
   display: flex;
@@ -244,33 +266,38 @@ select.case-select:focus {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background-color: #000;
+  background-color: var(--viewport-bg, #0b0f19);
   position: relative;
   overflow: hidden;
+  height: 100%;
+  min-height: 0;
 }
 
 /* 3D Viewport */
 .three-viewport {
-  flex: 6;
+  flex: 1;
   position: relative;
   width: 100%;
-  height: 60%;
-  background: radial-gradient(circle at center, #111827 0%, #030712 100%);
+  height: 100%;
+  background: var(--viewport-gradient, radial-gradient(circle at center, #111827 0%, #030712 100%));
+  overflow: hidden;
 }
 
-#three-canvas {
-  width: 100%;
-  height: 100%;
+#three-canvas,
+.three-viewport canvas {
+  width: 100% !important;
+  height: 100% !important;
   display: block;
 }
 
 /* 2D MPR Viewport */
 .mpr-viewport {
-  flex: 4;
-  height: 40%;
+  height: 260px;
+  max-height: 40%;
+  flex-shrink: 0;
   background-color: #0b0e14;
   border-top: 2px solid var(--border-color);
-  display: flex;
+  display: none;
   flex-direction: column;
 }
 
@@ -873,8 +900,18 @@ select.theme-select:focus {
   outline-offset: 2px;
 }
 
+/* Responsive adaptation for compact desktop / laptops */
+@media screen and (max-width: 1366px) {
+  .sidebar-left {
+    width: 265px;
+  }
+  .sidebar-right {
+    width: 295px;
+  }
+}
+
 /* Tablet & Mobile responsive adaptation */
-@media screen and (max-width: 1280px) {
+@media screen and (max-width: 768px) {
   .cockpit-container {
     flex-direction: column;
     overflow-y: auto;
@@ -888,8 +925,678 @@ select.theme-select:focus {
     border-bottom: 1px solid var(--border-color);
   }
   .viewport-center {
-    height: 520px !important;
-    min-height: 520px !important;
+    height: 420px !important;
+    min-height: 420px !important;
   }
 }
+
+/* ==========================================================================
+   AcuCalyx Multi-Page Doctor Portal & Sidebar Architecture
+   ========================================================================== */
+
+.app-shell {
+  display: flex;
+  flex-direction: row;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background-color: var(--bg-canvas);
+}
+
+/* Clinical Sidebar */
+.clinical-sidebar {
+  width: 250px;
+  min-width: 250px;
+  max-width: 250px;
+  background-color: var(--bg-surface);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow-y: auto;
+  z-index: 40;
+  transition: width 0.2s ease;
+}
+
+.sidebar-brand {
+  padding: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.brand-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-text .brand-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.brand-text .brand-title span {
+  color: var(--accent-cyan);
+}
+
+.brand-text .brand-sub {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-section-title {
+  padding: 16px 16px 6px 16px;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 0 10px;
+}
+
+.sidebar-nav .nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 12px;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+
+.sidebar-nav .nav-item svg {
+  flex-shrink: 0;
+  opacity: 0.8;
+  transition: transform 0.15s ease;
+}
+
+.sidebar-nav .nav-item:hover {
+  background-color: var(--bg-surface-elevated);
+  color: var(--text-primary);
+}
+
+.sidebar-nav .nav-item:hover svg {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
+.sidebar-nav .nav-item.active {
+  background-color: rgba(2, 132, 199, 0.12);
+  color: var(--accent-cyan);
+  font-weight: 600;
+  border-left: 3px solid var(--accent-cyan);
+  border-radius: 4px 8px 8px 4px;
+}
+
+.sidebar-nav .nav-item.active svg {
+  opacity: 1;
+  stroke: var(--accent-cyan);
+}
+
+.nav-badge {
+  margin-left: auto;
+  background-color: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 7px;
+  border-radius: 12px;
+}
+
+.dp-pill {
+  margin-left: auto;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10b981;
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+}
+
+.sidebar-spacer {
+  flex: 1;
+}
+
+/* Sidebar Active Case Card */
+.sidebar-active-case-card {
+  margin: 12px 10px;
+  padding: 10px 12px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.case-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.case-card-label {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.case-card-state {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(2, 132, 199, 0.15);
+  color: var(--accent-cyan);
+}
+
+.case-card-id {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.case-card-patient {
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+/* Doctor Footer in Sidebar */
+.sidebar-doctor-footer {
+  padding: 12px 14px;
+  background: var(--bg-surface-elevated);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.doctor-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--accent-cyan);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11.5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.1);
+}
+
+.doctor-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.doctor-name {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-role {
+  font-size: 10px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.doctor-switch-btn {
+  background: none;
+  border: 1px solid var(--border-color);
+  color: var(--text-muted);
+  border-radius: 6px;
+  padding: 5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.doctor-switch-btn:hover {
+  background-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+/* Clinical Main Content Area */
+.clinical-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.views-container {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+}
+
+.page-view {
+  display: none;
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  padding: 24px;
+  animation: fadeInView 0.18s ease-in-out;
+}
+
+.page-view.active {
+  display: flex;
+  flex-direction: column;
+}
+
+#view-cockpit.page-view.active {
+  padding: 0;
+  overflow: hidden;
+}
+
+@keyframes fadeInView {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Topbar Breadcrumb & Vault Dot */
+.topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.topbar-breadcrumb {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.topbar-doctor-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  padding: 3px 8px;
+  border-radius: 14px;
+  font-size: 11px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.topbar-doctor-badge .vault-text {
+  white-space: nowrap;
+  display: inline-block;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ==========================================================================
+   Context-Aware Adaptive Header Controls:
+   Display only the controls and actions relevant to the active page view.
+   ========================================================================== */
+
+.case-controls {
+  display: none !important;
+}
+
+.topbar-actions {
+  display: none !important;
+}
+
+/* On Cockpit & Workbench: Show Case Controls and Planning Actions */
+[data-active-route="cockpit"] .case-controls,
+[data-active-route="workbench"] .case-controls {
+  display: flex !important;
+}
+
+[data-active-route="cockpit"] .topbar-actions,
+[data-active-route="workbench"] .topbar-actions {
+  display: flex !important;
+}
+
+/* Remove clutter from topbar on Cockpit & Workbench */
+[data-active-route="cockpit"] #btn-usability-study,
+[data-active-route="cockpit"] #btn-validation-gate,
+[data-active-route="workbench"] #btn-usability-study,
+[data-active-route="workbench"] #btn-validation-gate,
+[data-active-route="workbench"] #btn-new-demo,
+[data-active-route="workbench"] #scenario-select,
+[data-active-route="workbench"] #btn-upload,
+[data-active-route="workbench"] #btn-provenance {
+  display: none !important;
+}
+
+.vault-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* Metrics & KPI Cards */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--card-shadow);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.metric-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--card-hover-shadow);
+}
+
+.metric-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.metric-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  line-height: 1.1;
+  margin-bottom: 4px;
+}
+
+.metric-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* Section Containers & Headers */
+.section-container {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  box-shadow: var(--card-shadow);
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Patient Directory Grid */
+.patient-directory-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.patient-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-shadow: var(--card-shadow);
+}
+
+.patient-card:hover {
+  border-color: var(--accent-cyan);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+}
+
+.patient-card.selected {
+  border-color: var(--accent-cyan);
+  background: rgba(2, 132, 199, 0.04);
+}
+
+.patient-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.patient-mrn {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  margin-right: 8px;
+}
+
+.patient-demographics {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.patient-indication {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  font-weight: 500;
+}
+
+.patient-meta-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.meta-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.meta-tag.laterality-left {
+  color: var(--accent-cyan);
+  border-color: rgba(2, 132, 199, 0.3);
+  background: rgba(2, 132, 199, 0.08);
+}
+
+.meta-tag.laterality-right {
+  color: #10b981;
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.08);
+}
+
+.patient-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-color);
+  padding-top: 10px;
+  margin-top: 2px;
+}
+
+.doctor-badge {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Differential Privacy & Federated Learning UI */
+.fl-header-box {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.1), rgba(16, 185, 129, 0.05));
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.fl-gauge-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 140px;
+}
+
+.fl-gauge-circle {
+  width: 90px;
+  height: 90px;
+  border-radius: 50%;
+  background: conic-gradient(var(--accent-teal) 0% 15%, rgba(255,255,255,0.08) 15% 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+}
+
+.fl-gauge-inner {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.dp-tag {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* Endoscopy Reachability Tags */
+.strain-tag {
+  font-size: 9.5px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.strain-none { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.strain-low { background: rgba(2, 132, 199, 0.15); color: var(--accent-cyan); }
+.strain-moderate { background: rgba(245, 158, 11, 0.15); color: #f59e0b; }
+.strain-high { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+.reach-tag {
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.reach-yes { background: rgba(16, 185, 129, 0.15); color: #10b981; }
+.reach-no { background: rgba(239, 68, 68, 0.15); color: #ef4444; }
+
+/* Toast Notifications */
+.clinical-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  z-index: 1000;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+  transform: translateY(20px);
+  opacity: 0;
+  transition: all 0.25s ease;
+  pointer-events: none;
+}
+
+.clinical-toast.visible {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.clinical-toast.toast-success {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: #064e3b;
+  color: #a7f3d0;
+}
+
+.clinical-toast.toast-info {
+  border-color: rgba(2, 132, 199, 0.4);
+  background: #0c4a6e;
+  color: #bae6fd;
+}
+
 
