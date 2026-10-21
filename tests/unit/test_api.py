@@ -387,26 +387,35 @@ def test_upload_security_and_traversal_guards():
     enforce file size limits, and prevent Zip Slip exploits.
     """
     import io
+    import shutil
     import zipfile
-    from app.api.case_store import load_case_meta
+    from app.api.case_store import load_case_meta, CASES_DIR
 
     # 1. Invalid case_id with path traversal characters must fail
     res_trav = client.get("/api/cases/..%2F..%2Fetc/status")
     assert res_trav.status_code in (400, 404)
 
     # 2. Upload with path traversal in filename must sanitize safe_filename
-    file_content = b"Mock CT DICOM raw bytes"
-    res_upload = client.post(
-        "/api/cases/upload",
-        files={"file": ("../../malicious.nii.gz", io.BytesIO(file_content), "application/gzip")}
-    )
-    assert res_upload.status_code == 200
-    up_data = res_upload.json()
-    assert "malicious" in up_data["case_id"]
-    assert ".." not in up_data["case_id"]
-    up_meta = load_case_meta(up_data["case_id"])
-    assert "malicious.nii.gz" in up_meta["input_path"]
-    assert ".." not in up_meta["input_path"]
+    uploaded_case_id = None
+    try:
+        file_content = b"Mock CT DICOM raw bytes"
+        res_upload = client.post(
+            "/api/cases/upload",
+            files={"file": ("../../malicious.nii.gz", io.BytesIO(file_content), "application/gzip")}
+        )
+        assert res_upload.status_code == 200
+        up_data = res_upload.json()
+        uploaded_case_id = up_data["case_id"]
+        assert "malicious" in uploaded_case_id
+        assert ".." not in uploaded_case_id
+        up_meta = load_case_meta(uploaded_case_id)
+        assert "malicious.nii.gz" in up_meta["input_path"]
+        assert ".." not in up_meta["input_path"]
+    finally:
+        if uploaded_case_id:
+            mal_dir = CASES_DIR / uploaded_case_id
+            if mal_dir.exists():
+                shutil.rmtree(mal_dir, ignore_errors=True)
 
     # 3. Zip file with zip-slip path traversal entry must be rejected with HTTP 400
     zip_buffer = io.BytesIO()

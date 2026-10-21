@@ -35,8 +35,6 @@ def create_synthetic_dicom_slice(
 
     ds = Dataset()
     ds.file_meta = file_meta
-    ds.is_little_endian = True
-    ds.is_implicit_VR = False
 
     ds.SOPClassUID = file_meta.MediaStorageSOPClassUID
     ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
@@ -67,7 +65,7 @@ def create_synthetic_dicom_slice(
     raw_pixels = np.full((rows, cols), 1024, dtype=np.int16)
     ds.PixelData = raw_pixels.tobytes()
 
-    ds.save_as(str(filename), write_like_original=False)
+    ds.save_as(str(filename), enforce_file_format=True)
     return filename
 
 

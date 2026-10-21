@@ -343,9 +343,10 @@ def test_cisa_kev_vulnerability_auditor() -> None:
 
 def test_dicom_ps315_phi_deidentification() -> None:
     """Verify that direct PHI is scrubbed per PS 3.15 Annex E while spatial tags are preserved."""
+    file_meta = FileMetaDataset()
+    file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
     ds = Dataset()
-    ds.is_little_endian = True
-    ds.is_implicit_VR = False
+    ds.file_meta = file_meta
 
     # Add direct PHI
     ds.PatientName = "DOE^JOHN^A"
