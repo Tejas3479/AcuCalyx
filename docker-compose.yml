@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  acucalyx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: acucalyx_cds_engine
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - ACUCALYX_ENV=production
+      - ACUCALYX_REQUIRE_AUTH=0
+      - ACUCALYX_LOG_LEVEL=INFO
+    volumes:
+      - ./data/cases:/app/data/cases
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
