@@ -1,0 +1,21 @@
+{
+  "name": "acucalyx-surgical-workstation",
+  "version": "2.1.0",
+  "description": "AcuCalyx Clinical Decision Support & 3D Surgical Planning Workstation for PCNL",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src"
+  },
+  "dependencies": {
+    "three": "^0.160.0"
+  },
+  "devDependencies": {
+    "@types/three": "^0.160.0",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.12"
+  }
+}

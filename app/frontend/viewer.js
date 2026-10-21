@@ -47,7 +47,11 @@ class AcuCalyxViewer3D {
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(window.devicePixelRatio || 1);
-    this.renderer.outputEncoding = THREE.sRGBEncoding;
+    if (typeof THREE.SRGBColorSpace !== 'undefined') {
+      this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    } else if (typeof THREE.sRGBEncoding !== 'undefined') {
+      this.renderer.outputEncoding = THREE.sRGBEncoding;
+    }
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.container.appendChild(this.renderer.domElement);
