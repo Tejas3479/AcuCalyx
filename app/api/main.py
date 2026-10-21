@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 import io
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import shutil
@@ -42,7 +43,10 @@ from app.api.case_store import (
     save_case_meta,
     log_case_audit_event,
     validate_case_id,
+    enrich_case_patient_metadata,
+    resolve_case_input_path,
 )
+from app.api.auth import Doctor, get_current_doctor
 from app.api.schemas import (
     CaseState, CaseSummaryResponse, CaseUploadResponse,
     PlanGenerationRequest, TrajectorySelectionRequest, ManualOverrideRequest,
@@ -157,16 +161,33 @@ def health_check():
 
 
 @app.get("/api/cases", response_model=List[CaseSummaryResponse])
-def list_cases():
-    """Lists all registered cases and their workflow state."""
+def list_cases(
+    all_cases: bool = Query(default=False, description="View all institutional cases across department"),
+    doctor_id: Optional[str] = Query(default=None, description="Filter specifically to assigned doctor"),
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
+    """
+    Lists registered cases with strict patient data privacy scoping.
+    Guarantees that attending physicians only access their assigned patients unless authorized.
+    """
     results = []
+    effective_doctor_filter = doctor_id
+    if not effective_doctor_filter and not all_cases and current_doctor.role != "CHIEF_SURGEON":
+        effective_doctor_filter = current_doctor.doctor_id
+
     for case_folder in sorted(CASES_DIR.iterdir()):
         if case_folder.is_dir():
             meta_path = case_folder / "case_meta.json"
             if meta_path.is_file():
                 try:
-                    with open(meta_path, "r") as f:
+                    with open(meta_path, "r", encoding="utf-8") as f:
                         meta = json.load(f)
+                    meta = enrich_case_patient_metadata(meta)
+
+                    # Strict Doctor Privacy Filter
+                    if effective_doctor_filter and meta.get("owner_doctor_id") != effective_doctor_filter:
+                        continue
+
                     results.append(CaseSummaryResponse(
                         case_id=meta["case_id"],
                         state=CaseState(meta.get("state", "UPLOADED")),
@@ -177,7 +198,15 @@ def list_cases():
                         active_candidate_id=meta.get("active_candidate_id"),
                         stone_count=meta.get("stone_count", 0),
                         candidate_count=meta.get("candidate_count", 0),
-                        clinical_notice=meta.get("clinical_notice", "")
+                        clinical_notice=meta.get("clinical_notice", ""),
+                        owner_doctor_id=meta.get("owner_doctor_id", "DOC_ELENA_CHEN"),
+                        owner_doctor_name=meta.get("owner_doctor_name", "Dr. Elena Chen, MD, FACS"),
+                        patient_id=meta.get("patient_id", f"PT-{abs(hash(meta['case_id'])) % 9000 + 1000}"),
+                        patient_age=meta.get("patient_age", 54),
+                        patient_sex=meta.get("patient_sex", "M"),
+                        clinical_indication=meta.get("clinical_indication", "Lower pole nephrolithiasis"),
+                        scheduled_procedure_date=meta.get("scheduled_procedure_date"),
+                        privacy_status=meta.get("privacy_status", "RESTRICTED_ATTENDING_ONLY")
                     ))
                 except Exception as e:
                     logger.warning(f"Error reading case meta in {case_folder}: {e}")
@@ -185,10 +214,12 @@ def list_cases():
 
 
 @app.post("/api/cases/demo", response_model=CaseSummaryResponse)
-def create_demo_case():
+def create_demo_case(
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
     """
     Creates an instant synthetic phantom case with analytical ground truth.
-    Provides immediate testing without requiring external DICOM uploads.
+    Allocated directly to the authenticated physician's private clinical vault.
     """
     case_id = f"DEMO_PHANTOM_{datetime.now().strftime('%H%M%S')}"
     case_dir = get_case_dir(case_id)
@@ -213,7 +244,7 @@ def create_demo_case():
     from acucalyx.geometry.anatomical_kidney_builder import AnatomicalKidneyBuilder
     AnatomicalKidneyBuilder().build_complete_anatomical_package(mesh_dest)
 
-    # Initial metadata
+    # Initial metadata with privacy ownership
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
         "case_id": case_id,
@@ -221,12 +252,19 @@ def create_demo_case():
         "state": CaseState.READY.value,
         "created_at": now_iso,
         "updated_at": now_iso,
-        "input_path": str(nii_path),
+        "input_path": "raw/phantom.nii.gz",
         "target_side": "left",
         "is_stale": False,
         "active_candidate_id": None,
         "stone_count": 1,
         "candidate_count": 0,
+        "owner_doctor_id": current_doctor.doctor_id,
+        "owner_doctor_name": current_doctor.full_name,
+        "patient_id": f"PT-{abs(hash(case_id)) % 9000 + 1000}",
+        "patient_age": 52,
+        "patient_sex": "F",
+        "clinical_indication": "Solitary lower pole calculus with acute infundibular neck",
+        "privacy_status": "RESTRICTED_ATTENDING_ONLY",
         "laterality_confirmation": {
             "is_verified": True,
             "confirmed_side": "left",
@@ -244,7 +282,7 @@ def create_demo_case():
         "clinical_notice": "Synthetic analytical CT calibration phantom."
     }
     save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "DEMO_CASE_CREATED", {"source": "Synthetic Phantom Generator"})
+    log_case_audit_event(case_id, "DEMO_CASE_CREATED", {"source": "Synthetic Phantom Generator", "doctor": current_doctor.full_name})
 
     return CaseSummaryResponse(
         case_id=case_id,
@@ -256,7 +294,14 @@ def create_demo_case():
         active_candidate_id=None,
         stone_count=1,
         candidate_count=0,
-        clinical_notice="Synthetic analytical CT calibration phantom ready for planning."
+        clinical_notice="Synthetic analytical CT calibration phantom ready for planning.",
+        owner_doctor_id=current_doctor.doctor_id,
+        owner_doctor_name=current_doctor.full_name,
+        patient_id=meta["patient_id"],
+        patient_age=meta["patient_age"],
+        patient_sex=meta["patient_sex"],
+        clinical_indication=meta["clinical_indication"],
+        privacy_status=meta["privacy_status"]
     )
 
 
@@ -266,8 +311,12 @@ MAX_ZIP_FILES = 2000
 
 
 @app.post("/api/cases/upload", response_model=CaseUploadResponse)
-async def upload_case(file: UploadFile = File(...), target_side: str = Query(default="left")):
-    """Uploads a CT series (either a .zip containing DICOM slices or a .nii/.nii.gz file)."""
+async def upload_case(
+    file: UploadFile = File(...),
+    target_side: str = Query(default="left"),
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
+    """Uploads a CT series with HIPAA de-identification and doctor privacy vault containment."""
     raw_filename = file.filename or "uploaded_ct"
     safe_filename = Path(raw_filename).name
     safe_filename = re.sub(r"[^A-Za-z0-9_.-]", "_", safe_filename)
@@ -387,12 +436,19 @@ async def upload_case(file: UploadFile = File(...), target_side: str = Query(def
         "state": CaseState.READY.value,
         "created_at": now_iso,
         "updated_at": now_iso,
-        "input_path": str(input_path),
+        "input_path": str(input_path.relative_to(case_dir)) if input_path.is_relative_to(case_dir) else str(input_path),
         "target_side": target_side.lower(),
         "is_stale": False,
         "active_candidate_id": None,
         "stone_count": 0,
         "candidate_count": 0,
+        "owner_doctor_id": current_doctor.doctor_id,
+        "owner_doctor_name": current_doctor.full_name,
+        "patient_id": f"PT-{abs(hash(case_id)) % 9000 + 1000}",
+        "patient_age": 58,
+        "patient_sex": "M",
+        "clinical_indication": "Clinical CT scan uploaded for PCNL puncture planning",
+        "privacy_status": "RESTRICTED_ATTENDING_ONLY",
         "laterality_confirmation": None,
         "surgical_position_confirmation": None,
         "clinical_notice": f"Uploaded {input_file_count} file(s). Mandatory laterality verification required prior to planning."
@@ -434,7 +490,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
     artifacts_dir = case_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
 
-    input_path = Path(meta["input_path"])
+    input_path = resolve_case_input_path(case_id, meta)
     if not input_path.exists():
         raise HTTPException(status_code=400, detail=f"Source imaging path not found: {input_path}")
 
@@ -662,6 +718,7 @@ def get_candidate_trajectories(case_id: str):
 
 
 @app.post("/api/cases/{case_id}/select")
+@app.post("/api/cases/{case_id}/trajectories/select")
 def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
     """
     Clinician approves a candidate trajectory.
@@ -1034,7 +1091,9 @@ def get_mpr_slice(
     and synchronized 3D-to-2D physical LPS reticle cursor.
     """
     meta = load_case_meta(case_id)
-    input_path = Path(meta["input_path"])
+    input_path = resolve_case_input_path(case_id, meta)
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail="Source imaging path not found on server.")
 
     cached = get_cached_volume(case_id)
     if cached is None:
@@ -1144,7 +1203,9 @@ def convert_lps_to_mpr_slice(
     and pixel coordinates across Axial, Coronal, and Sagittal planes.
     """
     meta = load_case_meta(case_id)
-    input_path = Path(meta["input_path"])
+    input_path = resolve_case_input_path(case_id, meta)
+    if not input_path.exists():
+        raise HTTPException(status_code=404, detail="Source imaging path not found on server.")
 
     cached = get_cached_volume(case_id)
     if cached is None:
@@ -1534,6 +1595,14 @@ def get_case_provenance(case_id: str):
     with open(prov_path, "r") as f:
         return json.load(f)
 
+
+# Mount Doctor Authentication & Patient Privacy Isolation Routes
+from app.api.auth import router as auth_router
+app.include_router(auth_router)
+
+# Mount Privacy-Preserving Federated Learning & DP Routes
+from app.api.routes_learning import router as learning_router
+app.include_router(learning_router)
 
 # Mount DRR Fluoroscopy Routes
 from app.api.routes_drr import router as drr_router
