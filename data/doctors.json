@@ -1,0 +1,47 @@
+{
+  "DOC_ELENA_CHEN": {
+    "doctor_id": "DOC_ELENA_CHEN",
+    "username": "elena.chen",
+    "full_name": "Dr. Elena Chen, MD, FACS",
+    "title": "Chief of Endourology & Minimally Invasive Surgery",
+    "department": "Department of Urology",
+    "institution": "Johns Hopkins Comprehensive Stone Center",
+    "npi": "1982736450",
+    "email": "elena.chen@hospital.org",
+    "role": "CHIEF_SURGEON",
+    "avatar_color": "#0284c7",
+    "created_at": "2026-10-21T07:15:05.555955+00:00",
+    "salt_hex": "1aff86362afc9de6777955bcb52b1a4d",
+    "password_hash_hex": "aee2904684b7de9def8eafd871c907951f5aabeb79e7180a05a5ea485b03a4c2"
+  },
+  "DOC_MARCUS_RAMIREZ": {
+    "doctor_id": "DOC_MARCUS_RAMIREZ",
+    "username": "marcus.ramirez",
+    "full_name": "Dr. Marcus Ramirez, MD",
+    "title": "Attending Interventional Urologist",
+    "department": "Division of Endourology",
+    "institution": "Memorial Endourology Institute",
+    "npi": "1472839102",
+    "email": "marcus.ramirez@hospital.org",
+    "role": "ATTENDING_SURGEON",
+    "avatar_color": "#047857",
+    "created_at": "2026-10-21T07:15:05.734479+00:00",
+    "salt_hex": "3ac1a174863ff4b641132a8a1a9b7148",
+    "password_hash_hex": "c837502dbd4d403cc9e58018ce9f44d0573856eac08e4d235bc77c462fe553bf"
+  },
+  "DOC_SARAH_JENKINS": {
+    "doctor_id": "DOC_SARAH_JENKINS",
+    "username": "sarah.jenkins",
+    "full_name": "Dr. Sarah Jenkins, MD",
+    "title": "Endourology & Robotics Clinical Fellow",
+    "department": "Department of Urology",
+    "institution": "Johns Hopkins Comprehensive Stone Center",
+    "npi": "1839201928",
+    "email": "sarah.jenkins@hospital.org",
+    "role": "FELLOW",
+    "avatar_color": "#7c3aed",
+    "created_at": "2026-10-21T07:15:05.902089+00:00",
+    "salt_hex": "95e50685ea6b55f568996a293c7f2044",
+    "password_hash_hex": "67cf336ebd328c1be3ac54386228f2b666e5f4d1e696560a437e1f0340a9ee3a"
+  }
+}
