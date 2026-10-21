@@ -32,6 +32,18 @@ class SpatialOrientation:
     def affine(self) -> np.ndarray:
         return self.affine_matrix
 
+    @property
+    def slice_thickness(self) -> float:
+        return float(self.spacing[2])
+
+    @property
+    def slice_spacing(self) -> float:
+        return float(self.spacing[2])
+
+    @property
+    def pixel_spacing(self) -> Tuple[float, float]:
+        return (float(self.spacing[0]), float(self.spacing[1]))
+
     @classmethod
     def from_dicom_parameters(
         cls,

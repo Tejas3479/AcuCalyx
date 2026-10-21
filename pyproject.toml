@@ -46,7 +46,9 @@ test = [
 ]
 
 [project.scripts]
-acucalyx = "app.api.main:run_server"
+acucalyx = "acucalyx.cli:main"
+acucalyx-server = "app.api.main:run_server"
+acucalyx-plan = "acucalyx.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src", "."]
