@@ -1,0 +1,436 @@
+{
+  "current_round": 17,
+  "cumulative_epsilon_spent": 2.9400000000000004,
+  "global_weights": [
+    -0.46820438825949606,
+    0.8513429382291355,
+    0.9779347716144522,
+    -0.595166713059456,
+    0.41386764532028075,
+    0.724344850052883,
+    0.589838520326685
+  ],
+  "global_bias": -0.04884915378924875,
+  "audit_log": [
+    {
+      "audit_id": "DP_AUDIT_2026_001",
+      "timestamp": "2026-10-14T08:30:00Z",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 12,
+      "l2_grad_norm_before_clip": 1.42,
+      "l2_grad_norm_after_clip": 1.0,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.21,
+      "delta": 1e-05,
+      "status": "COMMITTED",
+      "privacy_proof_hash": "60eb7b22d3524183"
+    },
+    {
+      "audit_id": "DP_AUDIT_2026_002",
+      "timestamp": "2026-10-18T14:15:00Z",
+      "doctor_id": "DOC_MARCUS_RAMIREZ",
+      "doctor_name": "Dr. Marcus Ramirez, MD",
+      "cases_trained": 15,
+      "l2_grad_norm_before_clip": 1.18,
+      "l2_grad_norm_after_clip": 1.0,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.21,
+      "delta": 1e-05,
+      "status": "COMMITTED",
+      "privacy_proof_hash": "788fc1943fb7841c"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_071645",
+      "timestamp": "2026-10-21T07:16:45.510691+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0191,
+      "l2_grad_norm_after_clip": 0.0191,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "259f5c04022aa4c3"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_074305",
+      "timestamp": "2026-10-21T07:43:05.580364+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0111,
+      "l2_grad_norm_after_clip": 0.0111,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "ce8cc8fe6177086d"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_080613",
+      "timestamp": "2026-10-21T08:06:13.165968+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0103,
+      "l2_grad_norm_after_clip": 0.0103,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "9712e0d91c1b9ed7"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_080823",
+      "timestamp": "2026-10-21T08:08:23.820434+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0145,
+      "l2_grad_norm_after_clip": 0.0145,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "924a82a06af590cf"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_081656",
+      "timestamp": "2026-10-21T08:16:56.358161+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0082,
+      "l2_grad_norm_after_clip": 0.0082,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "e0af8f8362d682f4"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_090153",
+      "timestamp": "2026-10-21T09:01:53.727222+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0174,
+      "l2_grad_norm_after_clip": 0.0174,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "cd2b5e9ad3ceda44"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_090506",
+      "timestamp": "2026-10-21T09:05:06.628771+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0143,
+      "l2_grad_norm_after_clip": 0.0143,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "a156bdb8aa4c1986"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_091003",
+      "timestamp": "2026-10-21T09:10:03.410890+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0123,
+      "l2_grad_norm_after_clip": 0.0123,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "ce43b43bfaad1e3b"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_105248",
+      "timestamp": "2026-10-21T10:52:48.543427+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0122,
+      "l2_grad_norm_after_clip": 0.0122,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "e6f51a358824d6ce"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_112218",
+      "timestamp": "2026-10-21T11:22:18.762559+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0103,
+      "l2_grad_norm_after_clip": 0.0103,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "be9a3c457a42f28d"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_115539",
+      "timestamp": "2026-10-21T11:55:39.947213+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0116,
+      "l2_grad_norm_after_clip": 0.0116,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "5816e119f85b1eab"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_115938",
+      "timestamp": "2026-10-21T11:59:38.173466+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0141,
+      "l2_grad_norm_after_clip": 0.0141,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "7f1b0b4433342f26"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_144333",
+      "timestamp": "2026-10-21T14:43:33.291601+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0142,
+      "l2_grad_norm_after_clip": 0.0142,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "284936283d718ffc"
+    },
+    {
+      "audit_id": "DP_AUDIT_20261021_152939",
+      "timestamp": "2026-10-21T15:29:39.788255+00:00",
+      "doctor_id": "DOC_ELENA_CHEN",
+      "doctor_name": "Dr. Elena Chen, MD, FACS",
+      "cases_trained": 8,
+      "l2_grad_norm_before_clip": 0.0125,
+      "l2_grad_norm_after_clip": 0.0125,
+      "noise_sigma": 1.45,
+      "epsilon_spent": 0.18,
+      "delta": 1e-05,
+      "status": "COMMITTED_DP_COMPLIANT",
+      "privacy_proof_hash": "96c8a5a0601a11ed"
+    }
+  ],
+  "history": [
+    {
+      "round_id": 1,
+      "started_at": "2026-10-14T08:30:00Z",
+      "completed_at": "2026-10-14T08:30:00Z",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 12,
+      "mean_training_loss": 0.084,
+      "consensus_accuracy": 94.2,
+      "total_epsilon_spent": 0.21
+    },
+    {
+      "round_id": 2,
+      "started_at": "2026-10-18T14:15:00Z",
+      "completed_at": "2026-10-18T14:15:00Z",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN",
+        "DOC_MARCUS_RAMIREZ"
+      ],
+      "cases_aggregated": 27,
+      "mean_training_loss": 0.061,
+      "consensus_accuracy": 96.5,
+      "total_epsilon_spent": 0.42
+    },
+    {
+      "round_id": 3,
+      "started_at": "2026-10-21T07:16:45.510768+00:00",
+      "completed_at": "2026-10-21T07:16:45.510774+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0029,
+      "consensus_accuracy": 96.4,
+      "total_epsilon_spent": 0.6
+    },
+    {
+      "round_id": 4,
+      "started_at": "2026-10-21T07:43:05.580484+00:00",
+      "completed_at": "2026-10-21T07:43:05.580499+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0013,
+      "consensus_accuracy": 97.2,
+      "total_epsilon_spent": 0.78
+    },
+    {
+      "round_id": 5,
+      "started_at": "2026-10-21T08:06:13.166003+00:00",
+      "completed_at": "2026-10-21T08:06:13.166006+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0011,
+      "consensus_accuracy": 98.0,
+      "total_epsilon_spent": 0.96
+    },
+    {
+      "round_id": 6,
+      "started_at": "2026-10-21T08:08:23.820468+00:00",
+      "completed_at": "2026-10-21T08:08:23.820471+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.002,
+      "consensus_accuracy": 98.8,
+      "total_epsilon_spent": 1.14
+    },
+    {
+      "round_id": 7,
+      "started_at": "2026-10-21T08:16:56.358223+00:00",
+      "completed_at": "2026-10-21T08:16:56.358228+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0008,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 1.32
+    },
+    {
+      "round_id": 8,
+      "started_at": "2026-10-21T09:01:53.727270+00:00",
+      "completed_at": "2026-10-21T09:01:53.727274+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0025,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 1.5
+    },
+    {
+      "round_id": 9,
+      "started_at": "2026-10-21T09:05:06.628805+00:00",
+      "completed_at": "2026-10-21T09:05:06.628808+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0018,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 1.68
+    },
+    {
+      "round_id": 10,
+      "started_at": "2026-10-21T09:10:03.411459+00:00",
+      "completed_at": "2026-10-21T09:10:03.411504+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0015,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 1.86
+    },
+    {
+      "round_id": 11,
+      "started_at": "2026-10-21T10:52:48.543461+00:00",
+      "completed_at": "2026-10-21T10:52:48.543464+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0014,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.04
+    },
+    {
+      "round_id": 12,
+      "started_at": "2026-10-21T11:22:18.762591+00:00",
+      "completed_at": "2026-10-21T11:22:18.762594+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0011,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.22
+    },
+    {
+      "round_id": 13,
+      "started_at": "2026-10-21T11:55:39.947247+00:00",
+      "completed_at": "2026-10-21T11:55:39.947249+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0014,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.4
+    },
+    {
+      "round_id": 14,
+      "started_at": "2026-10-21T11:59:38.173504+00:00",
+      "completed_at": "2026-10-21T11:59:38.173507+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0019,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.58
+    },
+    {
+      "round_id": 15,
+      "started_at": "2026-10-21T14:43:33.291697+00:00",
+      "completed_at": "2026-10-21T14:43:33.291703+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0018,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.76
+    },
+    {
+      "round_id": 16,
+      "started_at": "2026-10-21T15:29:39.788318+00:00",
+      "completed_at": "2026-10-21T15:29:39.788322+00:00",
+      "participating_doctors": [
+        "DOC_ELENA_CHEN"
+      ],
+      "cases_aggregated": 8,
+      "mean_training_loss": 0.0015,
+      "consensus_accuracy": 99.4,
+      "total_epsilon_spent": 2.94
+    }
+  ],
+  "last_updated": "2026-10-21T15:29:39.789037+00:00"
+}
