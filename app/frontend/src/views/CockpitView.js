@@ -17,6 +17,9 @@ export class CockpitView {
       if (window.viewer3d && typeof window.viewer3d.onWindowResize === 'function') {
         window.viewer3d.onWindowResize();
       }
+      if (window.layoutManager && typeof window.layoutManager.triggerViewerResize === 'function') {
+        window.layoutManager.triggerViewerResize();
+      }
     }, 60);
 
     const caseId = caseService.currentCaseId || (window.activeCaseId || null);

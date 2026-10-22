@@ -28,6 +28,15 @@ export class Sidebar {
       const modal = document.getElementById('modal-doctor-login');
       if (modal) modal.style.display = 'flex';
     });
+
+    // Wire sidebar collapse toggle trigger
+    document.getElementById('btn-toggle-clinical-sidebar')?.addEventListener('click', () => {
+      if (window.layoutManager) {
+        window.layoutManager.toggleSidebar('clinical-sidebar');
+      } else {
+        this.container?.classList.toggle('collapsed');
+      }
+    });
   }
 
   renderDoctor(doctor) {

@@ -234,11 +234,14 @@ select.case-select:focus {
   display: flex;
   flex: 1;
   overflow: hidden;
+  position: relative;
 }
 
 /* Left Sidebar: Controls & Patient Info */
 .sidebar-left {
   width: 285px;
+  min-width: 200px;
+  max-width: 520px;
   background-color: var(--bg-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -246,11 +249,16 @@ select.case-select:focus {
   overflow-y: auto;
   flex-shrink: 0;
   height: 100%;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  position: relative;
+  z-index: 10;
 }
 
 /* Right Sidebar: Decision Matrix */
 .sidebar-right {
   width: 325px;
+  min-width: 220px;
+  max-width: 580px;
   background-color: var(--bg-surface);
   border-left: 1px solid var(--border-color);
   display: flex;
@@ -259,6 +267,370 @@ select.case-select:focus {
   overflow-x: hidden;
   height: 100%;
   flex-shrink: 0;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  position: relative;
+  z-index: 10;
+}
+
+/* Collapsed States */
+.sidebar-left.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-right: none !important;
+  border-left: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+.sidebar-right.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-right: none !important;
+  border-left: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+.clinical-sidebar.collapsed {
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border-right: none !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+  visibility: hidden !important;
+}
+
+/* Resizable Splitter Handles across dividing lines */
+.splitter-vertical {
+  width: 6px;
+  background-color: var(--border-color);
+  position: relative;
+  cursor: col-resize;
+  flex-shrink: 0;
+  z-index: 28;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Wider grab hit-box for easy dragging */
+.splitter-vertical::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  right: -5px;
+  z-index: 2;
+}
+
+.splitter-vertical .splitter-handle-bar {
+  width: 2px;
+  height: 36px;
+  background-color: var(--text-muted);
+  border-radius: 2px;
+  opacity: 0.45;
+  transition: opacity 0.15s ease, height 0.15s ease, background-color 0.15s ease;
+  pointer-events: none;
+}
+
+.splitter-vertical:hover,
+.splitter-vertical.active-resizing {
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.45);
+}
+
+.splitter-vertical:hover .splitter-handle-bar,
+.splitter-vertical.active-resizing .splitter-handle-bar {
+  opacity: 1;
+  height: 52px;
+  background-color: #ffffff;
+}
+
+/* Horizontal Splitter */
+.splitter-horizontal {
+  height: 6px;
+  background-color: var(--border-color);
+  position: relative;
+  cursor: row-resize;
+  flex-shrink: 0;
+  z-index: 28;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  user-select: none;
+  -webkit-user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.splitter-horizontal::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -5px;
+  bottom: -5px;
+  z-index: 2;
+}
+
+.splitter-horizontal .splitter-handle-bar {
+  height: 2px;
+  width: 36px;
+  background-color: var(--text-muted);
+  border-radius: 2px;
+  opacity: 0.45;
+  transition: opacity 0.15s ease, width 0.15s ease, background-color 0.15s ease;
+  pointer-events: none;
+}
+
+.splitter-horizontal:hover,
+.splitter-horizontal.active-resizing {
+  background-color: var(--accent-cyan);
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.45);
+}
+
+.splitter-horizontal:hover .splitter-handle-bar,
+.splitter-horizontal.active-resizing .splitter-handle-bar {
+  opacity: 1;
+  width: 52px;
+  background-color: #ffffff;
+}
+
+/* Global body cursor during active drag */
+body.is-resizing-vertical,
+body.is-resizing-vertical * {
+  cursor: col-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+body.is-resizing-horizontal,
+body.is-resizing-horizontal * {
+  cursor: row-resize !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Disable transitions during active drag for fluid 60fps */
+body.is-resizing-vertical .sidebar-left,
+body.is-resizing-vertical .sidebar-right,
+body.is-resizing-vertical .clinical-sidebar,
+body.is-resizing-horizontal .mpr-viewport {
+  transition: none !important;
+}
+
+/* Sidebar Top Controls Header */
+.sidebar-top-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background-color: var(--bg-surface-elevated);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.sidebar-top-controls:hover {
+  background-color: rgba(2, 132, 199, 0.08);
+}
+
+.sidebar-top-controls:hover .sidebar-heading {
+  color: var(--accent-cyan);
+}
+
+.sidebar-brand {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease;
+}
+
+.sidebar-brand:hover {
+  background-color: rgba(2, 132, 199, 0.05);
+}
+/* Interactive Splitter Center Toggle Pill */
+.splitter-toggle-pill {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 14px;
+  height: 38px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.splitter-toggle-pill svg {
+  display: block;
+  stroke: currentColor;
+}
+
+.splitter-vertical:hover .splitter-toggle-pill,
+.splitter-toggle-pill:hover {
+  background-color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.55);
+}
+
+.splitter-horizontal .splitter-toggle-pill {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  height: 14px;
+  width: 38px;
+  background-color: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  z-index: 10;
+  transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: auto;
+}
+
+.splitter-horizontal:hover .splitter-toggle-pill,
+.splitter-horizontal .splitter-toggle-pill:hover {
+  background-color: var(--accent-cyan);
+  border-color: var(--accent-cyan);
+  color: #ffffff;
+  transform: translate(-50%, -50%) scale(1.15);
+  box-shadow: 0 0 10px rgba(2, 132, 199, 0.55);
+}
+
+
+.sidebar-heading {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-weight: 700;
+  letter-spacing: 0.4px;
+}
+
+.sidebar-collapse-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.sidebar-collapse-btn:hover {
+  background-color: var(--bg-surface);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  transform: scale(1.06);
+}
+
+/* Floating Expand Tabs */
+.sidebar-expand-tab {
+  position: absolute;
+  top: 54px;
+  z-index: 25;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  transition: all 0.15s ease;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.sidebar-expand-tab.left {
+  left: 14px;
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.sidebar-expand-tab.right {
+  right: 14px;
+  border-right: 3px solid var(--accent-teal);
+}
+
+.sidebar-expand-tab:hover {
+  background-color: var(--bg-surface-elevated);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(2, 132, 199, 0.25);
+}
+
+/* Navigation sidebar toggle in topbar */
+.btn-sidebar-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+
+.btn-sidebar-toggle:hover {
+  background: var(--bg-surface);
+  border-color: var(--accent-cyan);
+  color: var(--accent-cyan);
 }
 
 /* Center Viewports */
@@ -946,8 +1318,8 @@ select.theme-select:focus {
 /* Clinical Sidebar */
 .clinical-sidebar {
   width: 250px;
-  min-width: 250px;
-  max-width: 250px;
+  min-width: 180px;
+  max-width: 450px;
   background-color: var(--bg-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
@@ -955,7 +1327,9 @@ select.theme-select:focus {
   height: 100vh;
   overflow-y: auto;
   z-index: 40;
-  transition: width 0.2s ease;
+  transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.22s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+  flex-shrink: 0;
+  position: relative;
 }
 
 .sidebar-brand {

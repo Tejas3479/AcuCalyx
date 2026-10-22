@@ -30,6 +30,11 @@
           <div class="brand-title">Acu<span>Calyx</span>™</div>
           <div class="brand-sub">Surgical Decision Support</div>
         </div>
+        <button class="sidebar-collapse-btn" id="btn-collapse-clinical-sidebar" title="Collapse Navigation Sidebar (Ctrl+B)" aria-label="Collapse Navigation Sidebar" style="margin-left: auto;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
       </div>
 
       <div class="sidebar-section-title">CLINICAL WORKSPACE</div>
@@ -140,6 +145,14 @@
       </div>
     </aside>
 
+    <!-- Splitter: Navigation Sidebar <-> Clinical Main -->
+    <div class="splitter-vertical" id="splitter-app-sidebar" data-pane="clinical-sidebar" data-direction="left" title="Click to toggle Navigation Sidebar | Drag to resize | Double-click to reset">
+      <div class="splitter-handle-bar"></div>
+      <div class="splitter-toggle-pill" title="Click to toggle Navigation Sidebar">
+        <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L2 6L6 10"/></svg>
+      </div>
+    </div>
+
     <!-- Main Content Area -->
     <main class="clinical-main">
       <!-- Mandatory FDA CDS Disclaimer Banner -->
@@ -155,6 +168,13 @@
       <!-- Topbar Header -->
       <header class="app-header">
         <div class="topbar-left">
+          <button class="btn-sidebar-toggle" id="btn-toggle-clinical-sidebar" title="Toggle Navigation Sidebar (Ctrl+B)" aria-label="Toggle Navigation Sidebar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="12" x2="21" y2="12"></line>
+              <line x1="3" y1="6" x2="21" y2="6"></line>
+              <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+          </button>
           <div class="topbar-breadcrumb" id="topbar-breadcrumb">Surgical Control Center</div>
           <div class="topbar-doctor-badge" id="topbar-doctor-badge" title="Doctor Private Vault Isolation">
             <span class="vault-dot" style="background-color: #00e5a3"></span>
@@ -310,6 +330,19 @@
 
     <!-- Left Sidebar: Controls & Metrics -->
     <aside class="sidebar-left" role="region" aria-label="Controls and Anatomical Parameters">
+      <!-- Sidebar Header with Collapse Button -->
+      <div class="sidebar-top-controls">
+        <span class="sidebar-heading">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+          Acquisition & Metrics
+        </span>
+        <button class="sidebar-collapse-btn" id="btn-collapse-sidebar-left" title="Collapse Left Sidebar (Ctrl+[)" aria-label="Collapse Left Sidebar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="15 18 9 12 15 6"></polyline>
+          </svg>
+        </button>
+      </div>
+
       <!-- Case Meta -->
       <div class="panel-section">
         <div class="section-title">
@@ -519,8 +552,27 @@
       </div>
     </aside>
 
+    <!-- Splitter: Left Sidebar <-> 3D Center Viewport -->
+    <div class="splitter-vertical" id="splitter-cockpit-left" data-pane="sidebar-left" data-direction="left" title="Click to toggle Left Sidebar | Drag to resize | Double-click to reset">
+      <div class="splitter-handle-bar"></div>
+      <div class="splitter-toggle-pill" title="Click to toggle Acquisition & Metrics Panel">
+        <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2L2 6L6 10"/></svg>
+      </div>
+    </div>
+
     <!-- Center Viewports: 3D Scene + 2D MPR -->
     <main class="viewport-center">
+      <!-- Floating Expand Tabs for Collapsed Sidebars -->
+      <button class="sidebar-expand-tab left" id="btn-expand-sidebar-left" title="Open Left Sidebar (Ctrl+[)" style="display: none;">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"></polyline></svg>
+        <span>Acquisition & Anatomy</span>
+      </button>
+
+      <button class="sidebar-expand-tab right" id="btn-expand-sidebar-right" title="Open Right Sidebar (Ctrl+])" style="display: none;">
+        <span>Pareto Candidates</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+
       <!-- 3D Viewport (Full Center Stage) -->
       <div id="three-container" class="three-viewport">
         <!-- Floating Camera & Anatomical Tools Toolbar -->
@@ -532,6 +584,7 @@
           <button class="tool-btn" onclick="openNephronMagnifier()" style="color: #38bdf8; border-color: rgba(56,189,248,0.4);">🔬 Micro-Nephron 3D</button>
           <button class="tool-btn" onclick="viewer3d.focusOnStone()" style="color: #fbbf24; border-color: rgba(245,158,11,0.5); font-weight: 700;">💎 Focus Stone</button>
           <button class="tool-btn" id="btn-toggle-mpr" onclick="toggleMPRView()" style="color: #a78bfa; border-color: rgba(167,139,250,0.4);">🔲 2D CT Slice</button>
+          <button class="tool-btn" id="btn-toggle-both-sidebars" title="Toggle Fullscreen 3D Stage (Hide/Show Both Sidebars)" style="color: var(--accent-cyan); border-color: rgba(2, 132, 199, 0.4);">⛶ Fullscreen 3D</button>
         </div>
 
         <!-- Bottom-Left Anatomical Orientation Indicator -->
@@ -549,6 +602,14 @@
         <!-- Synthetic Anatomical Reference Template Disclosure Badge -->
         <div id="synthetic-mesh-warning" style="display: none; position: absolute; bottom: 14px; right: 14px; z-index: 20; background: rgba(245, 158, 11, 0.2); backdrop-filter: blur(8px); border: 1px solid var(--accent-amber); border-radius: 6px; padding: 6px 12px; pointer-events: none; font-size: 11px; color: var(--accent-amber); font-weight: 600; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
           ⚠️ Reference Anatomical Template Active (Non-Patient-Specific)
+        </div>
+      </div>
+
+      <!-- Splitter: 3D Viewport <-> 2D MPR CT Slice Drawer -->
+      <div class="splitter-horizontal" id="splitter-cockpit-mpr" data-pane="mpr-viewport" data-direction="bottom" title="Click to toggle 2D CT Slice | Drag to adjust height | Double-click to reset" style="display: none;">
+        <div class="splitter-handle-bar"></div>
+        <div class="splitter-toggle-pill" title="Click to toggle 2D CT MPR Slice">
+          <svg width="12" height="8" viewBox="0 0 12 8" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 6L6 2L10 6"/></svg>
         </div>
       </div>
 
@@ -583,8 +644,29 @@
       </div>
     </main>
 
+    <!-- Splitter: 3D Center Viewport <-> Right Sidebar -->
+    <div class="splitter-vertical" id="splitter-cockpit-right" data-pane="sidebar-right" data-direction="right" title="Click to toggle Right Sidebar | Drag to resize | Double-click to reset">
+      <div class="splitter-handle-bar"></div>
+      <div class="splitter-toggle-pill" title="Click to toggle Pareto Candidates Panel">
+        <svg width="8" height="12" viewBox="0 0 8 12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 2L6 6L2 10"/></svg>
+      </div>
+    </div>
+
     <!-- Right Sidebar: Pareto Decision Matrix -->
     <aside class="sidebar-right" role="region" aria-label="Pareto Access Candidates and Decision Matrix">
+      <!-- Sidebar Header with Collapse Button -->
+      <div class="sidebar-top-controls">
+        <button class="sidebar-collapse-btn" id="btn-collapse-sidebar-right" title="Collapse Right Sidebar (Ctrl+])" aria-label="Collapse Right Sidebar">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <polyline points="9 18 15 12 9 6"></polyline>
+          </svg>
+        </button>
+        <span class="sidebar-heading">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          Pareto Access Candidates
+        </span>
+      </div>
+
       <div class="panel-section">
         <div class="section-title">
           <span>Pareto Access Candidates</span>
@@ -2467,6 +2549,7 @@
   <!-- Scripts -->
   <script src="viewer.js?v=20261002_05"></script>
   <script src="mpr.js?v=20261002_05"></script>
+  <script src="layout-manager.js?v=20261022_01"></script>
 
   <script src="clinical-cockpit.js?v=20261021_02"></script>
   <script>
