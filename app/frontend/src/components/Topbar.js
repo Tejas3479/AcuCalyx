@@ -15,9 +15,9 @@ export class Topbar {
   init() {
     authService.subscribe((doctor) => this.renderDoctorBadge(doctor));
 
-    // Guard: only attach topbar action listeners if clinical-cockpit has not attached them
-    if (!window.__cockpitWorkflowAttached) {
-      window.__cockpitWorkflowAttached = true;
+    // Attach topbar action listeners
+    if (!this._initialized) {
+      this._initialized = true;
 
       // Handle case dropdown changes
       const caseSelect = document.getElementById('case-select');
@@ -84,10 +84,34 @@ export class Topbar {
             showToast('Please select a case first.', 'warning');
             return;
           }
+
+          // If non-demo case, check gates U1 and U2
+          const meta = caseService.currentMeta;
+          if (meta && !meta.is_demo) {
+            if (!meta.laterality_confirmation?.is_verified) {
+              const latModal = document.getElementById('modal-laterality');
+              if (latModal) {
+                latModal.style.display = 'flex';
+                showToast('Laterality Verification (Interlock U1) required before planning.', 'warning');
+                return;
+              }
+            }
+            if (!meta.surgical_position_confirmation?.is_confirmed) {
+              const posModal = document.getElementById('modal-position-confirm');
+              if (posModal) {
+                posModal.style.display = 'flex';
+                showToast('Patient Operative Pose Gate (Interlock U2) required before planning.', 'warning');
+                return;
+              }
+            }
+          }
+
           btnPlan.textContent = '⏳ Planning...';
           btnPlan.disabled = true;
           try {
-            const res = await caseService.runPlanning(caseId);
+            const res = await caseService.runPlanning(caseId, meta?.target_side || 'left', 15.0, {
+              allow_fallback_segmentation: true
+            });
             showToast(`Pareto access plan computed for ${caseId}!`, 'success');
             if (typeof window.selectCase === 'function') {
               await window.selectCase(caseId);

@@ -46,7 +46,11 @@
       window.dispatchEvent(new CustomEvent('acucalyx:doctor-changed', { detail: data.doctor }));
       window.portalCloseLogin();
     } catch (err) {
-      alert(`Doctor switch error: ${err.message}`);
+      if (window.showToast) {
+        window.showToast(`Doctor switch error: ${err.message}`, 'error');
+      } else {
+        alert(`Doctor switch error: ${err.message}`);
+      }
     }
   };
 
@@ -80,12 +84,20 @@
       const res = await fetch('/api/learning/train-local', { method: 'POST', headers });
       if (!res.ok) throw new Error('Training request rejected');
       const data = await res.json();
-      alert(`Differentially Private update committed! Proof: ${data.privacy_proof_hash}`);
+      if (window.showToast) {
+        window.showToast(`Differentially Private update committed! Proof: ${data.privacy_proof_hash}`, 'success');
+      } else {
+        alert(`Differentially Private update committed! Proof: ${data.privacy_proof_hash}`);
+      }
       if (window.__acucalyxApp?.router?.currentRoute === 'learning') {
         window.__acucalyxApp.router.handleHashChange();
       }
     } catch (err) {
-      alert(`Training error: ${err.message}`);
+      if (window.showToast) {
+        window.showToast(`Training error: ${err.message}`, 'error');
+      } else {
+        alert(`Training error: ${err.message}`);
+      }
     } finally {
       if (btn) {
         btn.disabled = false;

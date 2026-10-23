@@ -32,7 +32,11 @@ DATA_DIR = BASE_DIR / "data"
 DOCTORS_FILE = DATA_DIR / "doctors.json"
 
 _raw_auth_secret = os.environ.get("ACUCALYX_AUTH_SECRET")
-if os.environ.get("ACUCALYX_ENV") == "production" and (not _raw_auth_secret or _raw_auth_secret == "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD"):
+_INSECURE_SECRETS = {
+    "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD",
+    "ACUCALYX_SECURE_SURGICAL_JWT_PROD_DEPLOYMENT_KEY_2026",
+}
+if os.environ.get("ACUCALYX_ENV") == "production" and (not _raw_auth_secret or _raw_auth_secret in _INSECURE_SECRETS):
     raise RuntimeError(
         "Production Security Violation (FDA Section 524B / OWASP): "
         "ACUCALYX_AUTH_SECRET environment variable must be set to a secure random secret in production mode."
@@ -270,7 +274,10 @@ def get_current_doctor(
     elif "token" in request.query_params:
         token = request.query_params.get("token")
 
-    if os.getenv("ACUCALYX_REQUIRE_AUTH", "0") == "1":
+    is_prod = os.getenv("ACUCALYX_ENV") == "production"
+    require_auth = os.getenv("ACUCALYX_REQUIRE_AUTH", "1" if is_prod else "0") == "1"
+
+    if require_auth:
         if not token:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,

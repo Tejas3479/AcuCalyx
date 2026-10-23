@@ -55,7 +55,7 @@ where = ["src", "."]
 include = ["acucalyx*", "app*"]
 
 [tool.setuptools.package-data]
-"app.frontend" = ["*"]
+"app.frontend" = ["*", "**/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

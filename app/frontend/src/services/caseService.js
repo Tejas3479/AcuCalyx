@@ -50,11 +50,16 @@ class CaseService {
     return status;
   }
 
-  async runPlanning(caseId, targetSide = 'left', coarseStepMm = 15.0) {
-    const result = await api.post(`/api/cases/${caseId}/plan`, {
+  async runPlanning(caseId, targetSide = 'left', coarseStepMm = 15.0, options = {}) {
+    const payload = {
       target_side: targetSide,
-      coarse_step_mm: coarseStepMm
-    });
+      coarse_step_mm: coarseStepMm,
+      allow_fallback_segmentation: options.allow_fallback_segmentation || false
+    };
+    if (options.segmentation_method) {
+      payload.segmentation_method = options.segmentation_method;
+    }
+    const result = await api.post(`/api/cases/${caseId}/plan`, payload);
     this.notify('plan_generated', result);
     return result;
   }

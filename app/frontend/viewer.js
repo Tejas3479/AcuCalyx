@@ -46,7 +46,7 @@ class AcuCalyxViewer3D {
     // 3. Renderer with alpha: true for seamless clinical studio blending
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(width, height);
-    this.renderer.setPixelRatio(window.devicePixelRatio || 1);
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
     if (typeof THREE.SRGBColorSpace !== 'undefined') {
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     } else if (typeof THREE.sRGBEncoding !== 'undefined') {
@@ -109,7 +109,18 @@ class AcuCalyxViewer3D {
     this.scene.add(this.studioShadow);
 
     // 8. Event Listeners
-    window.addEventListener('resize', () => this.onWindowResize());
+    if (typeof ResizeObserver !== 'undefined' && this.container) {
+      this.resizeObserver = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+            this.onWindowResize();
+          }
+        }
+      });
+      this.resizeObserver.observe(this.container);
+    } else {
+      window.addEventListener('resize', () => this.onWindowResize());
+    }
     this.renderer.domElement.addEventListener('pointerdown', (e) => this.onPointerDown(e));
 
     // Animation Loop
@@ -131,9 +142,11 @@ class AcuCalyxViewer3D {
   onWindowResize() {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
+    if (width <= 0 || height <= 0) return; // Prevent NaN aspect ratio corruption
+
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height);
+    this.renderer.setSize(width, height, false);
   }
 
   recenterOnAnatomy() {

@@ -40,6 +40,7 @@ class AcuCalyxApplication {
 
   async init() {
     console.info('Initializing AcuCalyx Clinical Workstation (v2.1.0 Modular Architecture)...');
+    window.showToast = showToast;
 
     // 1. Initialize Modals
     Modal.initEscapeListener();

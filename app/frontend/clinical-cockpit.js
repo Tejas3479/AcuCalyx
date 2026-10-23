@@ -23,6 +23,27 @@
       };
     })();
 
+    // Global non-blocking Toast notification system (FIX-5)
+    window.showToast = window.showToast || function(message, type = 'info', durationMs = 3500) {
+      const toast = document.createElement('div');
+      toast.className = `clinical-toast toast-${type}`;
+      toast.textContent = message;
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => toast.classList.add('visible'));
+      setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+      }, durationMs);
+    };
+
+    function alert(msg) {
+      const isError = /error|failed|rejection|violation|invalid|required/i.test(msg);
+      const isSuccess = /✓|success|passed|saved|completed|unlocked/i.test(msg);
+      const isWarning = /warning|caution|stale|interlock/i.test(msg);
+      const type = isError ? 'error' : (isSuccess ? 'success' : (isWarning ? 'warning' : 'info'));
+      window.showToast(msg, type, isError ? 4500 : 3500);
+    }
+
     let viewer3d = null;
     let mprViewer = null;
     let currentCaseId = null;
@@ -246,28 +267,81 @@
       }
     }
 
-    async function runPlanning() {
+    async function runPlanning(options = {}) {
       if (!currentCaseId) return;
-      const plannedSide = (currentVerifiedLaterality || (currentCaseMeta && currentCaseMeta.target_side) || 'left').toLowerCase();
       const btn = document.getElementById('btn-run-plan');
+
+      // Pre-planning guided wizard: For non-demo cases, ensure U1 and U2 are satisfied first
+      if (currentCaseMeta && !currentCaseMeta.is_demo) {
+        const latConf = currentCaseMeta.laterality_confirmation;
+        if (!latConf || !latConf.is_verified) {
+          const latModal = document.getElementById('modal-laterality');
+          if (latModal) {
+            latModal.style.display = 'flex';
+            if (typeof window.showToast === 'function') {
+              window.showToast('Laterality Verification (Interlock U1) required before planning.', 'warning', 4000);
+            }
+            return;
+          }
+        }
+        const posConf = currentCaseMeta.surgical_position_confirmation;
+        if (!posConf || !posConf.is_confirmed) {
+          const posModal = document.getElementById('modal-position-confirm');
+          if (posModal) {
+            posModal.style.display = 'flex';
+            if (typeof loadPositionConfirmationData === 'function') loadPositionConfirmationData();
+            if (typeof window.showToast === 'function') {
+              window.showToast('Patient Operative Pose Gate (Interlock U2) required before planning.', 'warning', 4000);
+            }
+            return;
+          }
+        }
+      }
+
+      const plannedSide = (currentVerifiedLaterality || (currentCaseMeta && currentCaseMeta.target_side) || 'left').toLowerCase();
       btn.textContent = `⏳ Planning (${plannedSide.toUpperCase()})...`;
       btn.disabled = true;
+
+      const allowFallback = options.allow_fallback_segmentation !== undefined
+        ? options.allow_fallback_segmentation
+        : (document.getElementById('check-fallback-segmentation')?.checked || false);
 
       try {
         const res = await fetch(`/api/cases/${currentCaseId}/plan`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ target_side: plannedSide, coarse_step_mm: 15.0 })
+          body: JSON.stringify({
+            target_side: plannedSide,
+            coarse_step_mm: 15.0,
+            allow_fallback_segmentation: allowFallback
+          })
         });
         if (!res.ok) {
           const err = await res.json();
+          // If server failed due to missing neural weights and fallback is available
+          if (res.status === 500 && (err.detail || '').includes('TotalSegmentator native execution unavailable')) {
+            const consent = confirm(
+              "TotalSegmentator Neural Weights Unmounted on Server.\n\n" +
+              "Authorize Audited Heuristic Anatomical Fallback (Research & Feasibility Mode) and re-run planning?"
+            );
+            if (consent) {
+              return await runPlanning({ allow_fallback_segmentation: true });
+            }
+          }
           throw new Error(err.detail || 'Planning failed');
         }
         const data = await res.json();
         updateStateBadge(data.state, data.is_stale);
         await loadCaseArtifacts(currentCaseId);
+        if (typeof window.showToast === 'function') {
+          window.showToast('Preoperative surgical access planning completed successfully!', 'success', 3500);
+        }
       } catch (err) {
-        alert('Planning error: ' + err.message);
+        if (typeof window.showToast === 'function') {
+          window.showToast('Planning error: ' + err.message, 'error', 4500);
+        } else {
+          alert('Planning error: ' + err.message);
+        }
       } finally {
         btn.textContent = '⚡ Run Planning Pipeline';
         btn.disabled = false;
@@ -389,7 +463,7 @@
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(width, height);
-      renderer.setPixelRatio(window.devicePixelRatio || 1);
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
       renderer.outputEncoding = THREE.sRGBEncoding;
       container.appendChild(renderer.domElement);
 
@@ -1059,7 +1133,19 @@
         }
         document.getElementById('target-side-label').textContent = `${currentVerifiedLaterality.toUpperCase()} KIDNEY (U1 VERIFIED)`;
         document.getElementById('modal-laterality').style.display = 'none';
-        alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY. Planning unlocked.`);
+        if (typeof window.showToast === 'function') {
+          window.showToast(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY.`, 'success', 3500);
+        } else {
+          alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY.`);
+        }
+        // Auto-transition to Interlock U2 Operative Pose Gate if not yet confirmed
+        if (!currentCaseMeta?.surgical_position_confirmation?.is_confirmed) {
+          const posModal = document.getElementById('modal-position-confirm');
+          if (posModal) {
+            posModal.style.display = 'flex';
+            if (typeof loadPositionConfirmationData === 'function') loadPositionConfirmationData();
+          }
+        }
       } catch (err) {
         alert('Laterality check network error: ' + err.message);
       }

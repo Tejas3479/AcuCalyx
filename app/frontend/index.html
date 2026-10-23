@@ -708,44 +708,63 @@
       </div>
 
       <!-- Clinician Actions -->
-      <div class="panel-section clinician-actions-section" style="background-color: var(--bg-surface-elevated);">
-        <!-- Milestone M14.5 / Workbench Pivot Actions -->
-        <button id="btn-open-comparison-matrix-sidebar" class="btn btn-primary btn-open-comparison-matrix" onclick="window.openComparisonMatrix && window.openComparisonMatrix()" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight: 700;">
-          📊 Compare Candidate Tracts (Workbench)
-        </button>
-        <button id="btn-open-summary-card-sidebar" class="btn btn-open-summary-card" onclick="window.openSummaryCard && window.openSummaryCard()" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #10b981; color: #10b981; font-weight: 700;">
-          📄 1-Page Surgical Summary Card
-        </button>
-        <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
-          🛡️ Laterality Multi-Evidence Gate (U1)
-        </button>
-        <button id="btn-open-position-confirm" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #8b5cf6; color: #8b5cf6; font-weight: 600;">
-          🔄 Patient Pose & Alignment Gate (U2)
-        </button>
-        <button id="btn-open-endoscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #ec4899; color: #ec4899; font-weight: 700;">
-          🔬 Flexible Endoscopy & Reachability (M15)
-        </button>
-        <button id="btn-approve-trajectory" class="btn btn-success" style="width: 100%; justify-content: center; margin-bottom: 8px;">
-          ✓ Approve Selected Trajectory
-        </button>
-        <button id="btn-open-rehearsal" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 8px;">
-          🎯 Dual-Monitor Rehearsal Cockpit
-        </button>
-        <button id="btn-open-ultrasound" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #00d2ff; color: #00d2ff;">
-          📡 Simulated Ultrasound Planning
-        </button>
-        <button id="btn-open-verbal-protocol" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
-          📋 C-Arm Verbal Readback Card (U4)
-        </button>
-        <button id="btn-open-phantom" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
-          🧱 Phantom Metrology & Molds
-        </button>
-        <button id="btn-open-fluoroscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
-          🔬 C-Arm Forward Projection DRR
-        </button>
-        <button id="btn-manual-override" class="btn" style="width: 100%; justify-content: center;">
-          ✏️ Manual Override / Recalculate
-        </button>
+      <div class="panel-section clinician-actions-section" style="background-color: var(--bg-surface-elevated); padding: 8px;">
+        <!-- Phase 1: Pre-Access Verification -->
+        <div class="clinical-phase-card">
+          <div class="clinical-phase-header">🛡️ Phase 1: Pre-Access Verification</div>
+          <div class="clinical-phase-body">
+            <button id="btn-open-laterality" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-amber); color: var(--accent-amber);">
+              🛡️ Laterality Multi-Evidence Gate (U1)
+            </button>
+            <button id="btn-open-position-confirm" class="btn" style="width: 100%; justify-content: center; border-color: #8b5cf6; color: #8b5cf6; font-weight: 600;">
+              🔄 Patient Pose & Alignment Gate (U2)
+            </button>
+          </div>
+        </div>
+
+        <!-- Phase 2: Trajectory Selection & Review -->
+        <div class="clinical-phase-card">
+          <div class="clinical-phase-header">📊 Phase 2: Trajectory Selection & Review</div>
+          <div class="clinical-phase-body">
+            <button id="btn-open-comparison-matrix-sidebar" class="btn btn-primary btn-open-comparison-matrix" onclick="window.openComparisonMatrix && window.openComparisonMatrix()" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: var(--accent-cyan); color: var(--accent-cyan); font-weight: 700;">
+              📊 Compare Candidate Tracts (Workbench)
+            </button>
+            <button id="btn-open-summary-card-sidebar" class="btn btn-open-summary-card" onclick="window.openSummaryCard && window.openSummaryCard()" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #10b981; color: #10b981; font-weight: 700;">
+              📄 1-Page Surgical Summary Card
+            </button>
+            <button id="btn-approve-trajectory" class="btn btn-success" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+              ✓ Approve Selected Trajectory
+            </button>
+            <button id="btn-manual-override" class="btn" style="width: 100%; justify-content: center;">
+              ✏️ Manual Override / Recalculate
+            </button>
+          </div>
+        </div>
+
+        <!-- Phase 3: Intraoperative Navigation & Simulation -->
+        <div class="clinical-phase-card">
+          <div class="clinical-phase-header">🎯 Phase 3: Intraoperative Navigation & Simulation</div>
+          <div class="clinical-phase-body">
+            <button id="btn-open-rehearsal" class="btn btn-primary" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+              🎯 Dual-Monitor Rehearsal Cockpit
+            </button>
+            <button id="btn-open-ultrasound" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #00d2ff; color: #00d2ff;">
+              📡 Simulated Ultrasound Planning
+            </button>
+            <button id="btn-open-fluoroscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+              🔬 C-Arm Forward Projection DRR
+            </button>
+            <button id="btn-open-verbal-protocol" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px;">
+              📋 C-Arm Verbal Readback Card (U4)
+            </button>
+            <button id="btn-open-endoscopy" class="btn" style="width: 100%; justify-content: center; margin-bottom: 8px; border-color: #ec4899; color: #ec4899; font-weight: 700;">
+              🔬 Flexible Endoscopy & Reachability (M15)
+            </button>
+            <button id="btn-open-phantom" class="btn" style="width: 100%; justify-content: center;">
+              🧱 Phantom Metrology & Molds
+            </button>
+          </div>
+        </div>
       </div>
     </aside>
 

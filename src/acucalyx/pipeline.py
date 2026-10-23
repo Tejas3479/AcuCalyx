@@ -175,8 +175,10 @@ def segment_heuristic_anatomy(
     dx, dy, dz = spatial_orientation.spacing
     origin = spatial_orientation.origin
 
-    # Coordinate grids in physical space
-    i_idx, j_idx, k_idx = np.indices((rows, cols, slices))
+    # Memory-optimized coordinate grids in physical space via broadcasting (FIX-10)
+    i_idx = np.arange(rows, dtype=np.float32)[:, None, None]
+    j_idx = np.arange(cols, dtype=np.float32)[None, :, None]
+    k_idx = np.arange(slices, dtype=np.float32)[None, None, :]
     # Transform grid sample points
     # Affine: X_phys, Y_phys, Z_phys
     A = spatial_orientation.affine_matrix

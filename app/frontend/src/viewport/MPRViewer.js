@@ -88,7 +88,12 @@ class AcuCalyxMPRViewer {
     if (this.sliderElement) {
       this.sliderElement.value = this.currentSliceIndex;
     }
-    this.refreshSlice();
+    this.scheduleSliceUpdate();
+  }
+
+  scheduleSliceUpdate() {
+    if (this.rafId) cancelAnimationFrame(this.rafId);
+    this.rafId = requestAnimationFrame(() => this.refreshSlice());
   }
 
   applyWindowPreset(preset) {
@@ -145,6 +150,11 @@ class AcuCalyxMPRViewer {
 
   refreshSlice() {
     if (!this.currentCaseId) return;
+
+    if (this.activeController) {
+      this.activeController.abort();
+    }
+    this.activeController = new AbortController();
 
     let url = `/api/cases/${this.currentCaseId}/mpr/slice?orientation=${this.currentOrientation}&slice_index=${this.currentSliceIndex}&window_width=${this.windowWidth}&window_level=${this.windowLevel}&t=${Date.now()}`;
     if (this.crosshairPixel) {
