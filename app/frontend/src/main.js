@@ -99,7 +99,9 @@ class AcuCalyxApplication {
     // 6. Connect global bridge methods for 3D raycasting and selection
     window.selectCase = async (caseId) => {
       await caseService.getCaseStatus(caseId);
-      if (this.viewer3d && typeof window.loadCaseArtifacts === 'function') {
+      if (typeof window.cockpitSelectCase === 'function') {
+        await window.cockpitSelectCase(caseId);
+      } else if (this.viewer3d && typeof window.loadCaseArtifacts === 'function') {
         await window.loadCaseArtifacts(caseId);
       }
     };
@@ -128,6 +130,10 @@ class AcuCalyxApplication {
     // Re-render when doctor identity changes
     window.addEventListener('acucalyx:doctor-changed', async () => {
       await this.topbar.populateCaseList();
+      const firstCase = document.getElementById('case-select')?.value;
+      if (firstCase) {
+        await window.selectCase(firstCase);
+      }
       this.router.handleHashChange();
     });
 

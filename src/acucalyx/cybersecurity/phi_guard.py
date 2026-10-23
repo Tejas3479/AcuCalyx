@@ -102,6 +102,11 @@ class PHIGuard:
         elif env_key:
             selected_key = env_key.encode("utf-8")
         else:
+            if os.environ.get("ACUCALYX_ENV") == "production":
+                raise RuntimeError(
+                    "Production Security Violation (FDA Section 524B / HIPAA PS 3.15): "
+                    "ACUCALYX_DEID_SECRET environment variable must be set in production mode."
+                )
             warnings.warn(
                 "PHIGuard: Using default canonical development secret. In clinical/production deployments, "
                 "set the ACUCALYX_DEID_SECRET environment variable to prevent deterministic pseudonym recovery.",

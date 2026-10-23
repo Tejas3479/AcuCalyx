@@ -31,7 +31,13 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 DOCTORS_FILE = DATA_DIR / "doctors.json"
 
-AUTH_SECRET_KEY = os.environ.get("ACUCALYX_AUTH_SECRET", "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD").encode("utf-8")
+_raw_auth_secret = os.environ.get("ACUCALYX_AUTH_SECRET")
+if os.environ.get("ACUCALYX_ENV") == "production" and (not _raw_auth_secret or _raw_auth_secret == "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD"):
+    raise RuntimeError(
+        "Production Security Violation (FDA Section 524B / OWASP): "
+        "ACUCALYX_AUTH_SECRET environment variable must be set to a secure random secret in production mode."
+    )
+AUTH_SECRET_KEY = (_raw_auth_secret or "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD").encode("utf-8")
 TOKEN_EXPIRY_HOURS = 24
 
 router = APIRouter(prefix="/api/auth", tags=["Doctor Authentication & Privacy"])
@@ -235,8 +241,10 @@ def _ensure_doctors_db() -> Dict[str, DoctorInDB]:
 
 def _save_doctors_db(doctors: Dict[str, DoctorInDB]) -> None:
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    with open(DOCTORS_FILE, "w", encoding="utf-8") as f:
+    temp_file = DOCTORS_FILE.with_suffix(f".tmp_{secrets.token_hex(4)}")
+    with open(temp_file, "w", encoding="utf-8") as f:
         json.dump({k: v.model_dump() for k, v in doctors.items()}, f, indent=2)
+    temp_file.replace(DOCTORS_FILE)
 
 
 # ---------------------------------------------------------------------------

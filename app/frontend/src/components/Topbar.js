@@ -26,7 +26,11 @@ export class Topbar {
           const caseId = e.target.value;
           if (caseId) {
             try {
-              await caseService.getCaseStatus(caseId);
+              if (typeof window.selectCase === 'function') {
+                await window.selectCase(caseId);
+              } else {
+                await caseService.getCaseStatus(caseId);
+              }
               showToast(`Loaded active case: ${caseId}`, 'info');
             } catch (err) {
               showToast(`Failed to load case: ${err.message}`, 'error');
@@ -85,7 +89,11 @@ export class Topbar {
           try {
             const res = await caseService.runPlanning(caseId);
             showToast(`Pareto access plan computed for ${caseId}!`, 'success');
-            await caseService.getCaseStatus(caseId);
+            if (typeof window.selectCase === 'function') {
+              await window.selectCase(caseId);
+            } else {
+              await caseService.getCaseStatus(caseId);
+            }
           } catch (err) {
             showToast(`Planning failed: ${err.message}`, 'error');
           } finally {

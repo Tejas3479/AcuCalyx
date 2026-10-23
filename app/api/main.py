@@ -129,28 +129,34 @@ async def add_no_cache_headers(request, call_next):
     return response
 
 
-# In-memory bounded LRU cache for active volumes (max 3 cases to prevent OOM)
+# In-memory thread-safe bounded LRU cache for active volumes (max 3 cases to prevent OOM)
+import threading
+from starlette.concurrency import run_in_threadpool
+
 MAX_CACHED_VOLUMES = 3
 _ACTIVE_VOLUMES: OrderedDict[str, Dict[str, Any]] = OrderedDict()
+_ACTIVE_VOLUMES_LOCK = threading.Lock()
 
 
 def get_cached_volume(case_id: str) -> Optional[Dict[str, Any]]:
     """Retrieves volume from cache and updates LRU recency position."""
-    if case_id in _ACTIVE_VOLUMES:
-        _ACTIVE_VOLUMES.move_to_end(case_id)
-        return _ACTIVE_VOLUMES[case_id]
-    return None
+    with _ACTIVE_VOLUMES_LOCK:
+        if case_id in _ACTIVE_VOLUMES:
+            _ACTIVE_VOLUMES.move_to_end(case_id)
+            return _ACTIVE_VOLUMES[case_id]
+        return None
 
 
 def set_cached_volume(case_id: str, vol: np.ndarray, spatial: Any) -> None:
     """Stores volume in LRU cache, evicting the least recently accessed case if limit exceeded."""
-    if case_id in _ACTIVE_VOLUMES:
-        _ACTIVE_VOLUMES.move_to_end(case_id)
-    else:
-        if len(_ACTIVE_VOLUMES) >= MAX_CACHED_VOLUMES:
-            evicted_id, _ = _ACTIVE_VOLUMES.popitem(last=False)
-            logger.info(f"LRU Cache Eviction: Cleared volume memory for case {evicted_id}")
-    _ACTIVE_VOLUMES[case_id] = {"volume": vol, "spatial": spatial}
+    with _ACTIVE_VOLUMES_LOCK:
+        if case_id in _ACTIVE_VOLUMES:
+            _ACTIVE_VOLUMES.move_to_end(case_id)
+        else:
+            if len(_ACTIVE_VOLUMES) >= MAX_CACHED_VOLUMES:
+                evicted_id, _ = _ACTIVE_VOLUMES.popitem(last=False)
+                logger.info(f"LRU Cache Eviction: Cleared volume memory for case {evicted_id}")
+        _ACTIVE_VOLUMES[case_id] = {"volume": vol, "spatial": spatial}
 
 
 
@@ -806,8 +812,10 @@ def clinician_override(case_id: str, req: ManualOverrideRequest):
 
     try:
         ovr_path = artifacts_dir / "pending_overrides.json"
-        with open(ovr_path, "w") as f:
+        tmp_ovr = ovr_path.with_suffix(f".tmp_{secrets.token_hex(4)}")
+        with open(tmp_ovr, "w", encoding="utf-8") as f:
             json.dump(pending, f, indent=2)
+        tmp_ovr.replace(ovr_path)
     except Exception as e:
         logger.warning(f"Could not persist pending overrides artifact: {e}")
 
@@ -1540,12 +1548,14 @@ def _ensure_planning_report(case_id: str) -> Path:
     )
 
     try:
-        with open(report_meta_file, "w", encoding="utf-8") as rf:
+        tmp_rep = report_meta_file.with_suffix(f".tmp_{secrets.token_hex(4)}")
+        with open(tmp_rep, "w", encoding="utf-8") as rf:
             json.dump({
                 "plan_hash": current_plan_hash,
                 "active_candidate_id": active_cand,
                 "generated_at": now_iso
             }, rf, indent=2)
+        tmp_rep.replace(report_meta_file)
     except Exception as e:
         logger.warning(f"Could not persist report metadata: {e}")
 

@@ -2421,6 +2421,12 @@
     window.toggleIngestDrawer = toggleIngestDrawer;
     window.submitCtuIngest = submitCtuIngest;
 
+    // Core Workflow Exports for Multi-View Routing and Workstation Synchronization
+    window.cockpitSelectCase = selectCase;
+    window.loadCaseArtifacts = loadCaseArtifacts;
+    window.runPlanning = runPlanning;
+    window.downloadPDF = downloadPDF;
+
     window.__openComparisonMatrixImpl = openComparisonMatrix;
     window.__openSummaryCardImpl = openSummaryCard;
     window.__printSummaryCardImpl = printSummaryCard;
