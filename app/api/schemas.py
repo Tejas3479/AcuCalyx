@@ -124,6 +124,8 @@ class PlanGenerationRequest(BaseModel):
     monte_carlo_samples: int = Field(default=200, description="Stochastic perturbation iterations")
     allow_marginal: bool = Field(default=False, description="Proceed with marginal DICOM quality")
     segmentation_method: Optional[str] = Field(default=None, description="Explicit segmentation backend ('TOTALSEGMENTATOR' or 'HEURISTIC_DEMO')")
+    allow_fallback_segmentation: bool = Field(default=False, description="Permits audited heuristic anatomical corridor segmentation if native TotalSegmentator weights are unmounted")
+    allow_fallback_segmentation: bool = Field(default=False, description="Permits audited heuristic anatomical corridor segmentation if native TotalSegmentator weights are unmounted")
 
 
 class TrajectorySelectionRequest(BaseModel):

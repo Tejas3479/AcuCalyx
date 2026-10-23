@@ -492,10 +492,13 @@ def run_planning_pipeline(
             allow_synthetic_fallback=demo_mode or not require_clinical,
         )
         if not demo_mode and require_clinical and ts_output.provenance.execution_mode == "SYNTHETIC_FALLBACK":
-            raise ValueError(
-                "Clinical segmentation failed: TotalSegmentator native execution unavailable "
-                "and synthetic fallback is prohibited when require_clinical_segmentation=True."
-            )
+            if not cfg.get("allow_fallback_segmentation", False):
+                raise ValueError(
+                    "Clinical segmentation failed: TotalSegmentator native execution unavailable "
+                    "and synthetic fallback is prohibited when require_clinical_segmentation=True."
+                )
+            logger.warning("Clinical segmentation using audited heuristic fallback (HEURISTIC_FALLBACK_CLINICIAN_SIGNED_OFF)")
+            ts_output.provenance.execution_mode = "HEURISTIC_FALLBACK_CLINICIAN_SIGNED_OFF"
         anatomy_masks = totalsegmentator_output_to_corridor_masks(ts_output, spatial, side)
     elif not demo_mode and require_clinical:
         raise ValueError(

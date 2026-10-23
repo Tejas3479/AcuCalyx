@@ -10,10 +10,29 @@ import json
 import logging
 from pathlib import Path
 import re
+import secrets
 import shutil
+import threading
+import time
 from typing import Any, Dict, Optional
 
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
+from app.api.auth import Doctor, get_current_doctor
+
+_CASE_META_LOCK = threading.Lock()
+_AUDIT_LOG_LOCK = threading.Lock()
+
+
+def _atomic_replace_with_retry(src_path: Path, dst_path: Path, max_attempts: int = 5) -> None:
+    """Atomic file replacement with exponential backoff retry for Windows WinError 32 resilience."""
+    for attempt in range(max_attempts):
+        try:
+            src_path.replace(dst_path)
+            return
+        except OSError:
+            if attempt == max_attempts - 1:
+                raise
+            time.sleep(0.02 * (2 ** attempt))
 
 logger = logging.getLogger("acucalyx.case_store")
 
@@ -149,14 +168,15 @@ def load_case_meta(case_id: str) -> Dict[str, Any]:
 
 
 def save_case_meta(case_id: str, meta: Dict[str, Any]) -> None:
-    """Persists authoritative case metadata JSON atomically with ISO-8601 UTC timestamp."""
+    """Persists authoritative case metadata JSON atomically with ISO-8601 UTC timestamp and lock protection."""
     meta_path = get_case_meta_path(case_id)
     meta_path.parent.mkdir(parents=True, exist_ok=True)
     meta["updated_at"] = datetime.now(timezone.utc).isoformat()
-    temp_path = meta_path.with_suffix(f".tmp_{datetime.now(timezone.utc).strftime('%H%M%S%f')}")
-    with open(temp_path, "w", encoding="utf-8") as f:
-        json.dump(meta, f, indent=2)
-    temp_path.replace(meta_path)
+    temp_path = meta_path.with_suffix(f".tmp_{secrets.token_hex(4)}")
+    with _CASE_META_LOCK:
+        with open(temp_path, "w", encoding="utf-8") as f:
+            json.dump(meta, f, indent=2)
+        _atomic_replace_with_retry(temp_path, meta_path)
 
 
 def log_case_audit_event(case_id: str, action: str, details: Dict[str, Any], user: str = "System") -> None:
@@ -182,10 +202,11 @@ def log_case_audit_event(case_id: str, action: str, details: Dict[str, Any], use
         "action": action,
         "details": details
     })
-    temp_audit = audit_path.with_suffix(f".tmp_{datetime.now(timezone.utc).strftime('%H%M%S%f')}")
-    with open(temp_audit, "w", encoding="utf-8") as f:
-        json.dump(events, f, indent=2)
-    temp_audit.replace(audit_path)
+    temp_audit = audit_path.with_suffix(f".tmp_{secrets.token_hex(4)}")
+    with _AUDIT_LOG_LOCK:
+        with open(temp_audit, "w", encoding="utf-8") as f:
+            json.dump(events, f, indent=2)
+        _atomic_replace_with_retry(temp_audit, audit_path)
 
 
 class CaseStore:
@@ -221,3 +242,24 @@ class CaseStore:
             return all_cases
         return [c for c in all_cases if c.get("owner_doctor_id") == doctor_id]
 
+
+
+def verify_case_access(case_id: str, current_doctor: Doctor = Depends(get_current_doctor)) -> Dict[str, Any]:
+    """
+    Enforces Object-Level Authorization (BOLA/IDOR protection per OWASP API1:2023).
+    Restricts access to the assigned physician unless Chief Surgeon or Administrator.
+    Demo/phantom cases are universally accessible for rehearsal and training.
+    """
+    meta = load_case_meta(case_id)
+    if meta.get("is_demo", False):
+        return meta
+    doc_role = getattr(current_doctor, "role", "")
+    doc_id = getattr(current_doctor, "doctor_id", "")
+    if doc_role not in ("CHIEF_SURGEON", "ADMIN"):
+        owner_id = meta.get("owner_doctor_id")
+        if owner_id and owner_id != doc_id:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: Case '{case_id}' belongs to another clinician's private partition."
+            )
+    return meta

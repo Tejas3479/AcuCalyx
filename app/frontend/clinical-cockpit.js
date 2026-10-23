@@ -1,3 +1,28 @@
+    // Automatic Authorization Header Interceptor for HIPAA/FDA Compliance (F-12)
+    (function() {
+      const _origFetch = window.fetch;
+      window.fetch = function(input, init = {}) {
+        try {
+          const url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
+          if (url.startsWith('/api/')) {
+            init = init || {};
+            const headers = new Headers(init.headers || {});
+            if (!headers.has('Authorization')) {
+              const stored = localStorage.getItem('acucalyx_doctor_auth');
+              if (stored) {
+                const parsed = JSON.parse(stored);
+                if (parsed && parsed.token) {
+                  headers.set('Authorization', 'Bearer ' + parsed.token);
+                }
+              }
+            }
+            init.headers = headers;
+          }
+        } catch(e) {}
+        return _origFetch.call(this, input, init);
+      };
+    })();
+
     let viewer3d = null;
     let mprViewer = null;
     let currentCaseId = null;
@@ -262,6 +287,8 @@
       await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
       await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
       await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
+      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.30); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.65); } catch(e) {}
     }
 
     async function loadCaseArtifacts(caseId) {
@@ -311,6 +338,8 @@
       await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
       await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
       await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
+      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.30); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.65); } catch(e) {}
 
       // Trajectories
       currentCandidates.forEach((c, idx) => {

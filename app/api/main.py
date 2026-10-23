@@ -45,6 +45,7 @@ from app.api.case_store import (
     validate_case_id,
     enrich_case_patient_metadata,
     resolve_case_input_path,
+    verify_case_access,
 )
 from app.api.auth import Doctor, get_current_doctor
 from app.api.schemas import (
@@ -65,31 +66,7 @@ API_KEY_HEADER = APIKeyHeader(name="X-AcuCalyx-API-Key", auto_error=False)
 BEARER_AUTH = HTTPBearer(auto_error=False)
 
 
-def get_authenticated_clinician(
-    api_key: Optional[str] = Security(API_KEY_HEADER),
-    bearer: Optional[HTTPAuthorizationCredentials] = Security(BEARER_AUTH),
-) -> Dict[str, Any]:
-    """
-    Enforces authentication & authorization under FDA Premarket Cybersecurity (§524B) & OWASP API.
-    In production mode (ACUCALYX_REQUIRE_AUTH=1), rejects unauthenticated calls with HTTP 401.
-    In local development/test mode, falls back to authenticated test context with audit warning.
-    """
-    token = bearer.credentials if bearer else api_key
-    expected_token = os.getenv("ACUCALYX_API_TOKEN")
-
-    if os.getenv("ACUCALYX_REQUIRE_AUTH", "0") == "1":
-        if not token:
-            raise HTTPException(status_code=401, detail="Authentication required: X-AcuCalyx-API-Key or Bearer token missing.")
-        if expected_token and token != expected_token:
-            raise HTTPException(status_code=403, detail="Forbidden: Invalid credentials.")
-        return {"clinician_id": "AUTH_CLINICIAN_01", "role": "ATTENDING_ENDOUROLOGIST", "authenticated": True}
-
-    return {
-        "clinician_id": "CLINICIAN_LEAD_01",
-        "role": "ATTENDING_ENDOUROLOGIST",
-        "authenticated": bool(token),
-        "auth_mode": "DEVELOPMENT_PERMISSIVE" if not token else "TOKEN_VERIFIED"
-    }
+# Deprecated get_authenticated_clinician removed in favor of verify_case_access and get_current_doctor
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 FRONTEND_DIR = BASE_DIR / "app" / "frontend"
@@ -136,6 +113,7 @@ from starlette.concurrency import run_in_threadpool
 MAX_CACHED_VOLUMES = 3
 _ACTIVE_VOLUMES: OrderedDict[str, Dict[str, Any]] = OrderedDict()
 _ACTIVE_VOLUMES_LOCK = threading.Lock()
+_PLANNING_SEMAPHORE = threading.Semaphore(2)  # F-20: Maximum 2 concurrent heavy 3D planning pipelines
 
 
 def get_cached_volume(case_id: str) -> Optional[Dict[str, Any]]:
@@ -471,7 +449,7 @@ async def upload_case(
 
 
 @app.get("/api/cases/{case_id}/status", response_model=CaseSummaryResponse)
-def get_case_status(case_id: str):
+def get_case_status(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Retrieves current workflow state and high-level case metrics."""
     meta = load_case_meta(case_id)
     return CaseSummaryResponse(
@@ -489,7 +467,7 @@ def get_case_status(case_id: str):
 
 
 @app.post("/api/cases/{case_id}/plan", response_model=CaseSummaryResponse)
-def run_case_planning(case_id: str, req: PlanGenerationRequest):
+def run_case_planning(case_id: str, req: PlanGenerationRequest, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Executes the full planning pipeline, generating Pareto candidates, 3D meshes, and report."""
     meta = load_case_meta(case_id)
     case_dir = get_case_dir(case_id)
@@ -538,6 +516,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
         "coarse_step_mm": req.coarse_step_mm,
         "monte_carlo_samples": req.monte_carlo_samples,
         "allow_marginal": req.allow_marginal,
+        "allow_fallback_segmentation": getattr(req, "allow_fallback_segmentation", False),
         "pending_overrides": meta.get("pending_overrides", [])
     }
 
@@ -568,6 +547,12 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
         "segmentation_method": pipeline_cfg["segmentation_method"]
     })
 
+    acquired = _PLANNING_SEMAPHORE.acquire(blocking=False)
+    if not acquired:
+        raise HTTPException(
+            status_code=429,
+            detail="Server busy: Another 3D computational planning pipeline is currently running. Please retry in a few moments."
+        )
     try:
         res: PlanningPipelineResult = run_planning_pipeline(
             input_path=input_path,
@@ -589,6 +574,8 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
         meta["clinical_notice"] = f"Pipeline execution error: {str(e)}"
         save_case_meta(case_id, meta)
         raise HTTPException(status_code=500, detail=f"Planning pipeline failed: {str(e)}")
+    finally:
+        _PLANNING_SEMAPHORE.release()
 
     if res.status == "GATE_REJECTED":
         meta["state"] = CaseState.REJECTED.value
@@ -631,7 +618,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest):
 
 
 @app.get("/api/cases/{case_id}/quality")
-def get_quality_metrics(case_id: str):
+def get_quality_metrics(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Returns the fail-closed DICOM quality gate results."""
     case_dir = get_case_dir(case_id)
     q_file = case_dir / "artifacts" / "quality.json"
@@ -642,7 +629,7 @@ def get_quality_metrics(case_id: str):
 
 
 @app.get("/api/cases/{case_id}/stones", response_model=List[StoneMetricItem])
-def get_stone_metrics(case_id: str):
+def get_stone_metrics(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Returns detected kidney stones with true 3D volumetry and attenuation statistics."""
     case_dir = get_case_dir(case_id)
     s_file = case_dir / "artifacts" / "stones.json"
@@ -654,7 +641,7 @@ def get_stone_metrics(case_id: str):
 
 
 @app.get("/api/cases/{case_id}/candidates", response_model=List[CandidateTrajectoryItem])
-def get_candidate_trajectories(case_id: str):
+def get_candidate_trajectories(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Returns all computed Pareto access trajectories with clinical trade-offs and safety badges."""
     case_dir = get_case_dir(case_id)
     c_file = case_dir / "artifacts" / "candidates.json"
@@ -725,13 +712,12 @@ def get_candidate_trajectories(case_id: str):
 
 @app.post("/api/cases/{case_id}/select")
 @app.post("/api/cases/{case_id}/trajectories/select")
-def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
+def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest, meta: Dict[str, Any] = Depends(verify_case_access)):
     """
     Clinician approves a candidate trajectory.
     Validates candidate existence against generated plan artifacts,
     guards against stale plans, logs auditable event, and transitions case state to CLINICIAN_REVIEW.
     """
-    meta = load_case_meta(case_id)
     case_dir = get_case_dir(case_id)
 
     # Guard 1: Stale plan rejection
@@ -777,13 +763,12 @@ def select_candidate_trajectory(case_id: str, req: TrajectorySelectionRequest):
 
 
 @app.post("/api/cases/{case_id}/override")
-def clinician_override(case_id: str, req: ManualOverrideRequest):
+def clinician_override(case_id: str, req: ManualOverrideRequest, meta: Dict[str, Any] = Depends(verify_case_access)):
     """
     Clinician overrides an anatomical contour or target coordinate.
     Adheres strictly to AcuCalyx v2.1 governance: marks downstream plan as STALE,
     clears active trajectory, records pending override details, and requires re-planning.
     """
-    meta = load_case_meta(case_id)
     case_dir = get_case_dir(case_id)
     artifacts_dir = case_dir / "artifacts"
     artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -1039,7 +1024,7 @@ def get_candidate_comparison_matrix(case_id: str):
 
 
 @app.get("/api/cases/{case_id}/meshes/{mesh_name}")
-def get_case_mesh(case_id: str, mesh_name: str):
+def get_case_mesh(case_id: str, mesh_name: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Streams binary GLB 3D surface meshes for Three.js WebGL visualization."""
     case_dir = get_case_dir(case_id)
     # Clean filename
@@ -1086,6 +1071,7 @@ def export_combined_kidney_glb():
 @app.get("/api/cases/{case_id}/mpr/slice")
 def get_mpr_slice(
     case_id: str,
+    meta: Dict[str, Any] = Depends(verify_case_access),
     orientation: str = Query(default="AXIAL", description="'AXIAL', 'CORONAL', or 'SAGITTAL'"),
     slice_index: int = Query(default=40, ge=0),
     window_width: float = Query(default=400.0),
@@ -1129,10 +1115,12 @@ def get_mpr_slice(
         slice_data = vol[:, :, idx]
     elif orient_upper == "CORONAL":
         idx = max(0, min(slice_index, rows - 1))
-        slice_data = vol[idx, :, :]
+        # Transpose and flip vertically so Superior (Z) is at top and Right-to-Left (X) is horizontal
+        slice_data = np.flipud(vol[idx, :, :].T)
     elif orient_upper == "SAGITTAL":
         idx = max(0, min(slice_index, cols - 1))
-        slice_data = vol[:, idx, :]
+        # Transpose and flip vertically so Superior (Z) is at top and Anterior-to-Posterior (Y) is horizontal
+        slice_data = np.flipud(vol[:, idx, :].T)
     else:
         raise HTTPException(status_code=400, detail="Orientation must be AXIAL, CORONAL, or SAGITTAL")
 
@@ -1174,9 +1162,11 @@ def get_mpr_slice(
                 if orient_upper == "AXIAL":
                     px, py = int(p_interp[1]), int(p_interp[0])
                 elif orient_upper == "CORONAL":
-                    px, py = int(p_interp[1]), int(p_interp[2])
+                    px = int(p_interp[1])
+                    py = (slices - 1) - int(p_interp[2])
                 else:
-                    px, py = int(p_interp[0]), int(p_interp[2])
+                    px = int(p_interp[0])
+                    py = (slices - 1) - int(p_interp[2])
 
                 # Draw trajectory intercept green ring
                 draw.ellipse((px - 5, py - 5, px + 5, py + 5), outline="lime", width=2)
@@ -1263,7 +1253,7 @@ def convert_lps_to_mpr_slice(
 
 
 @app.get("/api/cases/{case_id}/nephrolithometry")
-def get_case_nephrolithometry(case_id: str):
+def get_case_nephrolithometry(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """
     Milestone M11: Descriptive Clinical Nephrolithometry Assessment.
     Computes Guy's Stone Score (I-IV) and S.T.O.N.E. score (5-13) strictly as
@@ -1564,7 +1554,7 @@ def _ensure_planning_report(case_id: str) -> Path:
 
 @app.get("/api/cases/{case_id}/report")
 @app.get("/api/cases/{case_id}/pdf-report")
-def download_planning_report(case_id: str):
+def download_planning_report(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Downloads the auditable 2-page Preoperative Planning PDF Report."""
     pdf_path = _ensure_planning_report(case_id)
     return FileResponse(
@@ -1575,7 +1565,7 @@ def download_planning_report(case_id: str):
 
 
 @app.get("/api/cases/{case_id}/keyframes/{keyframe_name}")
-def get_case_keyframe(case_id: str, keyframe_name: str):
+def get_case_keyframe(case_id: str, keyframe_name: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Streams server-rendered keyframe PNG image (axial, coronal, bullseye)."""
     clean_name = keyframe_name if keyframe_name.endswith(".png") else f"{keyframe_name}.png"
     case_dir = get_case_dir(case_id)
@@ -1596,7 +1586,7 @@ def get_case_keyframe(case_id: str, keyframe_name: str):
 
 
 @app.get("/api/cases/{case_id}/provenance")
-def get_case_provenance(case_id: str):
+def get_case_provenance(case_id: str, meta: Dict[str, Any] = Depends(verify_case_access)):
     """Downloads the cryptographic SHA-256 case provenance manifest."""
     case_dir = get_case_dir(case_id)
     prov_path = case_dir / "artifacts" / "provenance.json"

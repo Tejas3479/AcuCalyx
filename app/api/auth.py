@@ -270,6 +270,18 @@ def get_current_doctor(
     elif "token" in request.query_params:
         token = request.query_params.get("token")
 
+    if os.getenv("ACUCALYX_REQUIRE_AUTH", "0") == "1":
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required: Missing or expired session token."
+            )
+        payload = verify_access_token(token)
+        if not payload or payload.get("sub") not in doctors:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid credentials.")
+        doc_in_db = doctors[payload["sub"]]
+        return Doctor(**doc_in_db.model_dump(exclude={"salt_hex", "password_hash_hex"}))
+
     if token:
         payload = verify_access_token(token)
         if payload and payload.get("sub") in doctors:

@@ -136,24 +136,81 @@ class AcuCalyxViewer3D {
     this.renderer.setSize(width, height);
   }
 
+  recenterOnAnatomy() {
+    const box = new THREE.Box3();
+    let hasMesh = false;
+    for (const key in this.meshes) {
+      box.expandByObject(this.meshes[key]);
+      hasMesh = true;
+    }
+    if (hasMesh && this.controls) {
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      this.controls.target.copy(center);
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const maxDim = Math.max(size.x, size.y, size.z, 80.0);
+      this.camera.position.set(center.x, center.y - maxDim * 2.2, center.z + maxDim * 0.5);
+      this.controls.update();
+    }
+  }
+
   focusOnStone() {
     if (!this.controls) return;
-    const stonePos = new THREE.Vector3(21.5, 13.5, 37.5);
-    this.camera.position.set(21.5, -45.0, 39.0);
+    let stonePos = new THREE.Vector3(21.5, 13.5, 37.5);
+    if (this.meshes['stones']) {
+      const box = new THREE.Box3().setFromObject(this.meshes['stones']);
+      if (!box.isEmpty()) {
+        box.getCenter(stonePos);
+      }
+    }
+    this.camera.position.set(stonePos.x, stonePos.y - 70.0, stonePos.z + 15.0);
     this.controls.target.copy(stonePos);
     this.controls.update();
   }
 
+  _disposeNode(node) {
+    if (!node) return;
+    if (node.geometry) {
+      node.geometry.dispose();
+    }
+    if (node.material) {
+      if (Array.isArray(node.material)) {
+        node.material.forEach((m) => this._disposeMaterial(m));
+      } else {
+        this._disposeMaterial(node.material);
+      }
+    }
+  }
+
+  _disposeMaterial(mat) {
+    if (!mat) return;
+    for (const key of Object.keys(mat)) {
+      const val = mat[key];
+      if (val && typeof val === 'object' && val.isTexture) {
+        val.dispose();
+      }
+    }
+    mat.dispose();
+  }
+
   clearScene() {
     for (const key in this.meshes) {
-      this.scene.remove(this.meshes[key]);
+      const obj = this.meshes[key];
+      obj.traverse((child) => this._disposeNode(child));
+      this.scene.remove(obj);
     }
     this.meshes = {};
     this.clearTrajectories();
   }
 
   clearTrajectories() {
-    this.trajectories.forEach((t) => this.scene.remove(t.object));
+    this.trajectories.forEach((t) => {
+      if (t.object) {
+        t.object.traverse((child) => this._disposeNode(child));
+        this.scene.remove(t.object);
+      }
+    });
     this.trajectories = [];
   }
 
