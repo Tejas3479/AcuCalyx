@@ -437,10 +437,16 @@
       if (!container) return;
 
       if (!nephronViewer) {
-        nephronViewer = initNephron3DViewer(container, currentCaseId || 'DEMO_PHANTOM_185522');
-      } else {
-        nephronViewer.resize();
+        nephronViewer = initNephron3DViewer(container, currentCaseId || 'demo-case-001');
       }
+
+      // Responsive redraw on initial layout paint
+      requestAnimationFrame(() => {
+        if (nephronViewer && nephronViewer.resize) nephronViewer.resize();
+      });
+      setTimeout(() => {
+        if (nephronViewer && nephronViewer.resize) nephronViewer.resize();
+      }, 50);
     }
 
     function closeNephronMagnifier() {
@@ -452,61 +458,215 @@
     window.closeNephronMagnifier = closeNephronMagnifier;
 
     function initNephron3DViewer(container, caseId) {
-      const width = container.clientWidth || 480;
-      const height = container.clientHeight || 420;
+      container.innerHTML = '';
+      const width = container.clientWidth || 500;
+      const height = container.clientHeight || 440;
 
       const scene = new THREE.Scene();
-      scene.background = new THREE.Color(0x060a14);
+      scene.background = new THREE.Color(0x060913);
 
-      const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 500.0);
-      camera.position.set(16.0, 36.0, 22.0);
+      const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000.0);
+      camera.position.set(0, 4, 46);
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
       renderer.setSize(width, height);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
       renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
       container.appendChild(renderer.domElement);
 
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.dampingFactor = 0.05;
+      controls.target.set(0, 0, 0);
 
-      const ambLight = new THREE.AmbientLight(0xffffff, 0.85);
+      // Studio Multi-Angle Lighting
+      const ambLight = new THREE.AmbientLight(0xffffff, 0.95);
       scene.add(ambLight);
-      const dirLight = new THREE.DirectionalLight(0xffffff, 0.95);
-      dirLight.position.set(30, 50, 40);
-      scene.add(dirLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.2);
+      keyLight.position.set(30, 45, 35);
+      scene.add(keyLight);
+
+      const fillLight = new THREE.DirectionalLight(0x38bdf8, 0.65);
+      fillLight.position.set(-30, 15, -25);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.DirectionalLight(0xfbbf24, 0.5);
+      rimLight.position.set(0, -35, 15);
+      scene.add(rimLight);
 
       let nephronModel = null;
+
+      function createProceduralNephron() {
+        const group = new THREE.Group();
+
+        // 1. Glomerulus (Red capillary tuft)
+        const glomGeo = new THREE.SphereGeometry(2.2, 32, 32);
+        const glomMat = new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          roughness: 0.3,
+          metalness: 0.15,
+          emissive: 0x7f1d1d,
+          emissiveIntensity: 0.35
+        });
+        const glom = new THREE.Mesh(glomGeo, glomMat);
+        glom.position.set(0, 10, 0);
+        group.add(glom);
+
+        // 2. Bowman's Capsule (Gold translucent cup)
+        const bowmanGeo = new THREE.SphereGeometry(3.0, 32, 16, 0, Math.PI * 2, 0, Math.PI * 0.75);
+        const bowmanMat = new THREE.MeshStandardMaterial({
+          color: 0xfbbf24,
+          roughness: 0.2,
+          metalness: 0.1,
+          transparent: true,
+          opacity: 0.65,
+          side: THREE.DoubleSide
+        });
+        const bowman = new THREE.Mesh(bowmanGeo, bowmanMat);
+        bowman.position.set(0, 10, 0);
+        group.add(bowman);
+
+        // 3. Arterioles (Afferent & Efferent)
+        const affCurve = new THREE.CubicBezierCurve3(
+          new THREE.Vector3(-6, 8, -2),
+          new THREE.Vector3(-3, 8.5, -1),
+          new THREE.Vector3(-2, 9.5, 0),
+          new THREE.Vector3(-0.8, 10, 0)
+        );
+        const affGeo = new THREE.TubeGeometry(affCurve, 20, 0.45, 8, false);
+        const artMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
+        group.add(new THREE.Mesh(affGeo, artMat));
+
+        const effCurve = new THREE.CubicBezierCurve3(
+          new THREE.Vector3(-0.8, 11, 0.5),
+          new THREE.Vector3(-2, 11.5, 1),
+          new THREE.Vector3(-4, 12, 1.5),
+          new THREE.Vector3(-6, 12.5, 2)
+        );
+        const effGeo = new THREE.TubeGeometry(effCurve, 20, 0.38, 8, false);
+        group.add(new THREE.Mesh(effGeo, artMat));
+
+        // 4. Proximal Convoluted Tubule (PCT - Amber looping tube)
+        const pctCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(2.2, 10, 0),
+          new THREE.Vector3(4.5, 11, 2),
+          new THREE.Vector3(3.5, 12.5, 3),
+          new THREE.Vector3(1.5, 12, 2.5),
+          new THREE.Vector3(1.0, 9.5, 1.5),
+          new THREE.Vector3(2.5, 8.5, 0),
+          new THREE.Vector3(1.0, 7.0, -1)
+        ]);
+        const pctGeo = new THREE.TubeGeometry(pctCurve, 32, 0.5, 8, false);
+        const pctMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, roughness: 0.3 });
+        group.add(new THREE.Mesh(pctGeo, pctMat));
+
+        // 5. Loop of Henle (Blue U-turn hairpin descending into medulla)
+        const henleCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(1.0, 7.0, -1),
+          new THREE.Vector3(0.5, 2.0, -1),
+          new THREE.Vector3(0.0, -6.0, -0.5),
+          new THREE.Vector3(-0.5, -14.0, 0),
+          new THREE.Vector3(-1.2, -18.0, 0.2),
+          new THREE.Vector3(-2.0, -18.0, 0.2),
+          new THREE.Vector3(-2.5, -14.0, 0),
+          new THREE.Vector3(-3.0, -6.0, -0.5),
+          new THREE.Vector3(-3.5, 2.0, -1),
+          new THREE.Vector3(-3.8, 7.0, -0.5)
+        ]);
+        const henleGeo = new THREE.TubeGeometry(henleCurve, 48, 0.42, 8, false);
+        const henleMat = new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.3 });
+        group.add(new THREE.Mesh(henleGeo, henleMat));
+
+        // 6. Distal Convoluted Tubule (DCT - Orange convoluted tube)
+        const dctCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-3.8, 7.0, -0.5),
+          new THREE.Vector3(-4.5, 9.5, 0.5),
+          new THREE.Vector3(-3.0, 11.5, 1.5),
+          new THREE.Vector3(-1.5, 11.0, 0.8),
+          new THREE.Vector3(-2.5, 9.0, -0.5),
+          new THREE.Vector3(-4.0, 8.0, -1.5)
+        ]);
+        const dctGeo = new THREE.TubeGeometry(dctCurve, 28, 0.45, 8, false);
+        const dctMat = new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.3 });
+        group.add(new THREE.Mesh(dctGeo, dctMat));
+
+        // 7. Collecting Duct (Yellow vertical conduit down to papilla)
+        const cdCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-4.0, 8.0, -1.5),
+          new THREE.Vector3(-4.8, 6.0, -1.8),
+          new THREE.Vector3(-5.2, 0.0, -2.0),
+          new THREE.Vector3(-5.6, -10.0, -2.2),
+          new THREE.Vector3(-6.0, -20.0, -2.4)
+        ]);
+        const cdGeo = new THREE.TubeGeometry(cdCurve, 32, 0.58, 8, false);
+        const cdMat = new THREE.MeshStandardMaterial({ color: 0xeab308, roughness: 0.35 });
+        group.add(new THREE.Mesh(cdGeo, cdMat));
+
+        return group;
+      }
+
+      // Load mesh from server with fallback
       if (typeof THREE.GLTFLoader !== 'undefined') {
         const loader = new THREE.GLTFLoader();
         const url = `/api/cases/${caseId}/meshes/nephron_unit.glb`;
-        loader.load(url, (gltf) => {
-          nephronModel = gltf.scene;
-          const box = new THREE.Box3().setFromObject(nephronModel);
-          const center = box.getCenter(new THREE.Vector3());
-          nephronModel.position.sub(center);
-          controls.target.set(0, 0, 0);
+        loader.load(
+          url,
+          (gltf) => {
+            nephronModel = gltf.scene;
 
-          nephronModel.traverse((child) => {
-            if (child.isMesh) {
-              child.material = new THREE.MeshStandardMaterial({
-                color: child.material && child.material.color ? child.material.color : 0xf59e0b,
-                vertexColors: true,
-                roughness: 0.35,
-                metalness: 0.15,
-                side: THREE.DoubleSide
-              });
-            }
-          });
-          scene.add(nephronModel);
-        });
+            // Preserve full vertex color saturation with pure white base
+            nephronModel.traverse((child) => {
+              if (child.isMesh) {
+                child.material = new THREE.MeshStandardMaterial({
+                  color: 0xffffff,
+                  vertexColors: true,
+                  roughness: 0.3,
+                  metalness: 0.1,
+                  side: THREE.DoubleSide
+                });
+              }
+            });
+
+            // Re-orient model: rotate X by -90 deg so cortex/glomerulus is UP (+Y), loop of Henle DOWN (-Y)
+            nephronModel.rotation.x = -Math.PI / 2;
+
+            // Center object
+            const box = new THREE.Box3().setFromObject(nephronModel);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3());
+            nephronModel.position.sub(center);
+
+            // Auto-frame camera based on bounding dimension
+            const maxDim = Math.max(size.x, size.y, size.z) || 30;
+            camera.position.set(0, 0, maxDim * 1.55);
+            controls.target.set(0, 0, 0);
+            camera.lookAt(0, 0, 0);
+            controls.update();
+
+            scene.add(nephronModel);
+          },
+          undefined,
+          (err) => {
+            console.warn('Nephron GLB load fallback to procedural model:', err);
+            nephronModel = createProceduralNephron();
+            scene.add(nephronModel);
+            camera.position.set(0, 0, 46);
+            controls.target.set(0, 0, 0);
+            controls.update();
+          }
+        );
+      } else {
+        nephronModel = createProceduralNephron();
+        scene.add(nephronModel);
       }
 
       function animate() {
         requestAnimationFrame(animate);
         if (nephronModel) {
-          nephronModel.rotation.z += 0.005;
+          nephronModel.rotation.y += 0.006;
         }
         controls.update();
         renderer.render(scene, camera);
@@ -515,8 +675,9 @@
 
       return {
         resize: () => {
-          const w = container.clientWidth || 480;
-          const h = container.clientHeight || 420;
+          const w = container.clientWidth || 500;
+          const h = container.clientHeight || 440;
+          if (w === 0 || h === 0) return;
           camera.aspect = w / h;
           camera.updateProjectionMatrix();
           renderer.setSize(w, h);
@@ -740,6 +901,7 @@
       if (!currentCaseId) return;
       const img = document.getElementById('keyframe-preview-img');
       const caption = document.getElementById('keyframe-caption');
+      const pendingCard = document.getElementById('keyframe-pending-card');
       if (!img) return;
 
       const t = Date.now();
@@ -753,6 +915,15 @@
         kfName = 'bullseye_keyframe.png';
         capText = 'C-Arm Bull\'s-Eye Projection: coaxial down-the-barrel reticle with calibrated gantry presets.';
       }
+
+      img.onload = () => {
+        img.style.display = 'block';
+        if (pendingCard) pendingCard.style.display = 'none';
+      };
+      img.onerror = () => {
+        img.style.display = 'none';
+        if (pendingCard) pendingCard.style.display = 'flex';
+      };
 
       img.src = `/api/cases/${currentCaseId}/keyframes/${kfName}?t=${t}`;
       if (caption) caption.textContent = capText;

@@ -1572,16 +1572,33 @@ def get_case_keyframe(case_id: str, keyframe_name: str, meta: Dict[str, Any] = D
     kf_path = case_dir / "artifacts" / "keyframes" / clean_name
 
     if not kf_path.is_file():
-        # Trigger dynamic generation
-        _ensure_planning_report(case_id)
+        try:
+            # Trigger dynamic generation if planning artifacts exist
+            _ensure_planning_report(case_id)
+        except Exception:
+            pass
 
+    is_synthetic_template = False
     if not kf_path.is_file():
-        raise HTTPException(status_code=404, detail=f"Keyframe '{clean_name}' not found for case {case_id}")
+        # Check canonical reference preview keyframes
+        preview_kf = BASE_DIR / "data" / "anatomical_preview" / "keyframes" / clean_name
+        if preview_kf.is_file():
+            kf_path = preview_kf
+            is_synthetic_template = True
+        else:
+            raise HTTPException(status_code=404, detail=f"Keyframe '{clean_name}' not found for case {case_id}")
+
+    headers = {
+        "X-AcuCalyx-Intended-Use": "Display and Rehearsal Only. Non-Sterile.",
+        "X-AcuCalyx-Synthetic-Template": "true" if is_synthetic_template else "false",
+        "X-AcuCalyx-Keyframe-Source": "Standard Anatomical Reference Template" if is_synthetic_template else "Patient-Specific Trajectory Keyframe"
+    }
 
     return FileResponse(
         path=kf_path,
         media_type="image/png",
-        filename=clean_name
+        filename=clean_name,
+        headers=headers
     )
 
 
