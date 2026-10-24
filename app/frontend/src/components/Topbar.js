@@ -43,7 +43,7 @@ export class Topbar {
       const btnDemo = document.getElementById('btn-new-demo');
       if (btnDemo) {
         btnDemo.addEventListener('click', async () => {
-          btnDemo.textContent = '⏳ Creating...';
+          btnDemo.textContent = 'Creating...';
           btnDemo.disabled = true;
           try {
             const res = await caseService.createDemoCase();
@@ -106,7 +106,7 @@ export class Topbar {
             }
           }
 
-          btnPlan.textContent = '⏳ Planning...';
+          btnPlan.textContent = 'Planning...';
           btnPlan.disabled = true;
           try {
             const res = await caseService.runPlanning(caseId, meta?.target_side || 'left', 15.0, {
@@ -121,7 +121,7 @@ export class Topbar {
           } catch (err) {
             showToast(`Planning failed: ${err.message}`, 'error');
           } finally {
-            btnPlan.textContent = '⚡ Run Plan';
+            btnPlan.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Run Plan</span>';
             btnPlan.disabled = false;
           }
         });

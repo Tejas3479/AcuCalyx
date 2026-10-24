@@ -45,7 +45,7 @@ export class PatientDirectoryView {
     if (filtered.length === 0) {
       grid.innerHTML = `
         <div style="grid-column: 1 / -1; padding: 48px; text-align: center; background: var(--bg-surface); border: 1px dashed var(--border-color); border-radius: 12px;">
-          <div style="font-size: 36px; margin-bottom: 12px;">🔒</div>
+          <div style="margin-bottom: 12px;"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
           <h3 style="font-size: 16px; margin-bottom: 8px;">Private Clinical Partition Active</h3>
           <p style="color: var(--text-muted); max-width: 500px; margin: 0 auto 16px auto;">
             Only patient scans allocated to <strong>${doctor ? doctor.full_name : 'this physician'}</strong> are accessible. 
@@ -84,7 +84,7 @@ export class PatientDirectoryView {
           </div>
 
           <div class="patient-card-footer">
-            <span class="doctor-badge">👨‍⚕️ ${c.owner_doctor_name ? c.owner_doctor_name.split(',')[0] : 'Dr. Elena Chen'}</span>
+            <span class="doctor-badge"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>${c.owner_doctor_name ? c.owner_doctor_name.split(',')[0] : 'Dr. Elena Chen'}</span>
             <button class="btn btn-xs btn-outline">Rehearse →</button>
           </div>
         </div>

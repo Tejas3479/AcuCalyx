@@ -90,7 +90,7 @@ export class LearningView {
     const btn = document.getElementById('btn-train-fl-local');
     if (btn) {
       btn.disabled = true;
-      btn.textContent = '⚡ Computing Local DP-SGD Gradients...';
+      btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Computing Local DP-SGD Gradients...</span>';
     }
 
     try {
@@ -102,7 +102,7 @@ export class LearningView {
     } finally {
       if (btn) {
         btn.disabled = false;
-        btn.textContent = '🚀 Train Local Model & Contribute Differential Privacy Update';
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Train Local Model & Contribute Differential Privacy Update</span>';
       }
     }
   }

@@ -62,7 +62,7 @@ export class ComparisonMatrixModal {
         } else {
           loading.innerHTML = `
             <div style="color: var(--accent-red); padding: 24px; text-align: center;">
-              <div style="font-size: 15px; font-weight: 700; margin-bottom: 6px;">⚠️ Unable to Load Matrix</div>
+              <div style="font-size: 15px; font-weight: 700; margin-bottom: 6px;">Unable to Load Matrix</div>
               <div style="font-size: 12px; color: var(--text-secondary);">${err.message}</div>
             </div>
           `;

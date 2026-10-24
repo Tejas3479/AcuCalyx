@@ -59,7 +59,7 @@ export class CockpitView {
             <td><strong>${r.calyx_name}</strong></td>
             <td>${typeof r.deflection_deg === 'number' ? r.deflection_deg.toFixed(1) : r.deflection_deg}°</td>
             <td><span class="strain-tag strain-${(r.strain || 'LOW').toLowerCase().replace(/[^a-z]/g, '')}">${r.strain || 'LOW'}</span></td>
-            <td><span class="reach-tag ${r.is_reachable ? 'reach-yes' : 'reach-no'}">${r.is_reachable ? '✓ REACHABLE' : '✗ BLOCKED'}</span></td>
+            <td><span class="reach-tag ${r.is_reachable ? 'reach-yes' : 'reach-no'}">${r.is_reachable ? 'REACHABLE' : ' BLOCKED'}</span></td>
           </tr>
         `).join('');
       }

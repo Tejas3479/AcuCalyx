@@ -104,7 +104,7 @@ export class WorkbenchView {
                     <td style="padding: 10px 12px;"><span class="meta-tag">${c.access_rib_classification || 'SUBCOSTAL'}</span></td>
                     <td style="padding: 10px 12px; text-align: right;">
                       <button class="btn btn-xs ${isActive ? 'btn-success' : 'btn-primary'}" onclick="window.selectTrajectory('${c.candidate_id}'); window.location.hash='#cockpit';">
-                        ${isActive ? '✓ Selected (View Cockpit)' : 'Select Tract'}
+                        ${isActive ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg> Selected' : 'Select Tract'}
                       </button>
                     </td>
                   </tr>

@@ -38,7 +38,7 @@
 
     function alert(msg) {
       const isError = /error|failed|rejection|violation|invalid|required/i.test(msg);
-      const isSuccess = /✓|success|passed|saved|completed|unlocked/i.test(msg);
+      const isSuccess = /success|passed|saved|completed|unlocked/i.test(msg);
       const isWarning = /warning|caution|stale|interlock/i.test(msg);
       const type = isError ? 'error' : (isSuccess ? 'success' : (isWarning ? 'warning' : 'info'));
       window.showToast(msg, type, isError ? 4500 : 3500);
@@ -343,7 +343,7 @@
           alert('Planning error: ' + err.message);
         }
       } finally {
-        btn.textContent = '⚡ Run Planning Pipeline';
+        btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> <span>Run Planning Pipeline</span>';
         btn.disabled = false;
       }
     }
@@ -532,13 +532,13 @@
         mpr.style.display = 'flex';
         if (btn) {
           btn.style.color = '#38bdf8';
-          btn.textContent = '✖ Close 2D Slice';
+          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> <span>Close 2D Slice</span>';
         }
       } else {
         mpr.style.display = 'none';
         if (btn) {
           btn.style.color = '#a78bfa';
-          btn.textContent = '🔲 2D CT Slice';
+          btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> <span>2D CT Slice</span>';
         }
       }
       setTimeout(() => {
@@ -567,19 +567,19 @@
         const letter = String.fromCharCode(65 + (idx % 26));
         let badgeClass = 'badge-preferred';
         let badgeLabel = 'FEASIBLE';
-        let badgeIcon = '🎯';
+        let badgeIcon = '';
 
         if (c.safety_badge === 'REJECTED') {
           badgeClass = 'badge-rejected';
-          badgeIcon = '🛑';
+          badgeIcon = '';
           badgeLabel = 'REJECTED';
         } else if (c.safety_badge === 'CONDITIONAL' || c.safety_badge === 'MARGINAL') {
           badgeClass = 'badge-conditional';
-          badgeIcon = '⚡';
+          badgeIcon = '';
           badgeLabel = 'MARGINAL';
         } else {
           badgeClass = 'badge-preferred';
-          badgeIcon = '🎯';
+          badgeIcon = '';
           badgeLabel = 'FEASIBLE';
         }
 
@@ -803,7 +803,7 @@
           throw new Error(err.detail || 'Could not load benchmark scenario');
         }
         const data = await res.json();
-        alert(`🎯 Benchmark Scenario Loaded: ${data.title}\n\nTarget Side: ${data.target_side.toUpperCase()} Kidney\nComplexity: ${data.complexity_tier}\nCandidates Generated: ${data.candidate_count}\n\nClick OK to inspect 3D anatomy, comparison matrix, and CT keyframes.`);
+        window.showToast(`Loaded scenario: ${data.title}`, 'info');
         await loadCasesList();
         document.getElementById('case-select').value = data.case_id;
         await selectCase(data.case_id);
@@ -857,7 +857,7 @@
           }
           if (card.mandatory_assumption_block) {
             const cleanAssumption = card.mandatory_assumption_block.replace('VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK: ', '');
-            document.getElementById('transfer-assumption-block').innerHTML = `⚠️ <strong>VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK:</strong> ${cleanAssumption}`;
+            document.getElementById('transfer-assumption-block').innerHTML = `<strong>VIRTUAL PREOPERATIVE PLAN ASSUMPTION BLOCK:</strong> ${cleanAssumption}`;
           }
         }
         await loadRehearsalDrrImages();
@@ -941,17 +941,17 @@
               banner.style.background = 'rgba(225, 29, 72, 0.25)';
               banner.style.borderColor = '#e11d48';
               banner.style.color = '#ff4d6d';
-              icon.innerText = '🛑';
+              icon.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#ef4444;box-shadow:0 0 8px #ef4444;"></span>';
             } else if (tel.status === 'MEDIAL_WALL_WARNING') {
               banner.style.background = 'rgba(245, 158, 11, 0.2)';
               banner.style.borderColor = '#f59e0b';
               banner.style.color = '#fbbf24';
-              icon.innerText = '⚠️';
+              icon.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f59e0b;box-shadow:0 0 8px #f59e0b;"></span>';
             } else if (tel.status === 'LUMINAL_ACCESS') {
               banner.style.background = 'rgba(0, 210, 255, 0.15)';
               banner.style.borderColor = '#00d2ff';
               banner.style.color = '#38bdf8';
-              icon.innerText = '🎯';
+              icon.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#38bdf8;box-shadow:0 0 8px #38bdf8;"></span>';
             } else if (tel.status === 'TARGET_PAPILLA_ZONE') {
               banner.style.background = 'rgba(0, 229, 163, 0.15)';
               banner.style.borderColor = '#00e5a3';
@@ -961,7 +961,7 @@
               banner.style.background = 'rgba(148, 163, 184, 0.1)';
               banner.style.borderColor = '#475569';
               banner.style.color = '#94a3b8';
-              icon.innerText = '🟢';
+              icon.innerHTML = '<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#00e5a3;box-shadow:0 0 8px #00e5a3;"></span>';
             }
           }
         } catch (e) {
@@ -1134,9 +1134,9 @@
         document.getElementById('target-side-label').textContent = `${currentVerifiedLaterality.toUpperCase()} KIDNEY (U1 VERIFIED)`;
         document.getElementById('modal-laterality').style.display = 'none';
         if (typeof window.showToast === 'function') {
-          window.showToast(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY.`, 'success', 3500);
+          window.showToast(`Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY.`, 'success', 3500);
         } else {
-          alert(`✓ Interlock U1 Passed: Laterality verified for ${data.confirmed_side} KIDNEY.`);
+          // toast already displayed above
         }
         // Auto-transition to Interlock U2 Operative Pose Gate if not yet confirmed
         if (!currentCaseMeta?.surgical_position_confirmation?.is_confirmed) {
@@ -1227,7 +1227,7 @@
         }
 
         document.getElementById('modal-position-confirm').style.display = 'none';
-        alert(`✓ Interlock U2 Passed: Surgical position verified as ${selectedPose}.\n${data.message}`);
+        window.showToast(`Interlock U2 Passed: Position verified as ${selectedPose}`, 'success');
       } catch (err) {
         alert('Position verification network error: ' + err.message);
       }
@@ -1538,12 +1538,12 @@
           valBox.style.background = 'rgba(0, 229, 163, 0.15)';
           valBox.style.border = '1px solid #00e5a3';
           valBox.style.color = '#00e5a3';
-          valBox.innerText = `✓ Gantry Angle Validated: Matches intended plan within 1.0° (Total Angular Error: ${data.total_angular_error_deg}°).`;
+          valBox.innerText = `Gantry Angle Validated: Matches intended plan within 1.0° (Total Angular Error: ${data.total_angular_error_deg}°).`;
         } else {
           valBox.style.background = 'rgba(225, 29, 72, 0.2)';
           valBox.style.border = '1px solid #e11d48';
           valBox.style.color = '#ff4d6d';
-          valBox.innerText = `⚠️ ${data.error_description} (Type: ${data.transposition_error_type}, Total Angular Error: ${data.total_angular_error_deg}°).`;
+          valBox.innerText = `${data.error_description} (Type: ${data.transposition_error_type}, Total Angular Error: ${data.total_angular_error_deg}°).`;
         }
       } catch (err) {
         console.error('Validation error:', err);
@@ -1595,7 +1595,7 @@
       } catch (err) {
         loading.innerHTML = `
           <div style="color: var(--accent-red); padding: 24px; text-align: center;">
-            <div style="font-size: 16px; font-weight: 700; margin-bottom: 6px;">⚠️ Comparison Matrix Unavailable</div>
+            <div style="font-size: 16px; font-weight: 700; margin-bottom: 6px;">Comparison Matrix Unavailable</div>
             <div style="font-size: 12px; color: var(--text-secondary);">${err.message}</div>
           </div>
         `;
@@ -1643,7 +1643,7 @@
           </div>
           <div style="font-size: 10px; color: var(--text-secondary); font-family: var(--font-mono);">${c.candidate_id}</div>
           <button class="btn btn-sm ${isActive ? 'btn-success' : 'btn-primary'}" style="width: 100%; margin-top: 6px; font-size: 10px;" onclick="selectTractFromMatrix('${c.candidate_id}')">
-            ${isActive ? '✓ Selected' : 'Select This Tract'}
+            ${isActive ? 'Selected' : 'Select This Tract'}
           </button>
         `;
         trHead.appendChild(th);
@@ -1670,33 +1670,33 @@
         tbody.appendChild(tr);
       }
 
-      addMatrixRow('🎯 Target Calyx', c => `<strong>${c.target_calyx_name}</strong> <span style="font-size: 10px; color: var(--text-secondary);">(${c.target_calyx_id})</span>`);
-      addMatrixRow('📏 Working Tract Depth', c => formatMetricValue(c.tract_length_mm));
-      addMatrixRow('📐 Puncture Angles', c => `Coronal: ${formatMetricValue(c.puncture_angle_coronal_deg)}<br>Sagittal: ${formatMetricValue(c.puncture_angle_sagittal_deg)}`);
-      addMatrixRow('🦴 Rib Intercostal Relation', c => `<strong>${c.rib_relation}</strong>`);
-      addMatrixRow('🫁 Pleural Reflection Clearance', c => {
+      addMatrixRow('Target Calyx', c => `<strong>${c.target_calyx_name}</strong> <span style="font-size: 10px; color: var(--text-secondary);">(${c.target_calyx_id})</span>`);
+      addMatrixRow('Working Tract Depth', c => formatMetricValue(c.tract_length_mm));
+      addMatrixRow('Puncture Angles', c => `Coronal: ${formatMetricValue(c.puncture_angle_coronal_deg)}<br>Sagittal: ${formatMetricValue(c.puncture_angle_sagittal_deg)}`);
+      addMatrixRow('Rib Intercostal Relation', c => `<strong>${c.rib_relation}</strong>`);
+      addMatrixRow('Pleural Reflection Clearance', c => {
         const val = c.pleural_clearance?.value;
         const color = (val !== null && val < 10) ? 'color: var(--accent-red); font-weight: 700;' : '';
         return `<span style="${color}">${formatMetricValue(c.pleural_clearance)}</span>`;
       });
-      addMatrixRow('🛡️ Retrorenal Colon Margin', c => {
+      addMatrixRow('Retrorenal Colon Margin', c => {
         const val = c.colon_clearance?.value;
         const color = (val !== null && val < 15) ? 'color: var(--accent-amber); font-weight: 700;' : '';
         return `<span style="${color}">${formatMetricValue(c.colon_clearance)}</span>`;
       });
-      addMatrixRow('🩸 Major Vascular Margin', c => formatMetricValue(c.vascular_clearance));
-      addMatrixRow('🔭 Rigid Scope Reach', c => `${formatMetricValue(c.rigid_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.rigid_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
-      addMatrixRow('🔄 Flexible Scope Reach', c => `${formatMetricValue(c.flexible_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.flexible_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
-      addMatrixRow('🧱 Inaccessible Volume', c => formatMetricValue(c.inaccessible_stone_volume_mm3));
-      addMatrixRow('🩺 Sheath Caliber (EAU)', c => `<div style="font-size: 11px; line-height: 1.35;">${c.caliber_suitability_considerations}</div>`);
-      addMatrixRow('💧 Irrigation Pressure Risk', c => `<div style="font-size: 11px; line-height: 1.35;">${c.irrigation_pressure_risk}</div>`);
-      addMatrixRow('⚠️ Uncertainty Flags', c => {
+      addMatrixRow('Major Vascular Margin', c => formatMetricValue(c.vascular_clearance));
+      addMatrixRow('Rigid Scope Reach', c => `${formatMetricValue(c.rigid_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.rigid_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
+      addMatrixRow('Flexible Scope Reach', c => `${formatMetricValue(c.flexible_accessible_stone_percent)} <span style="font-size: 10px; color: var(--text-secondary);">(${c.flexible_accessible_stone_volume_mm3?.value ?? '--'} mm³)</span>`);
+      addMatrixRow('Inaccessible Volume', c => formatMetricValue(c.inaccessible_stone_volume_mm3));
+      addMatrixRow('Sheath Caliber (EAU)', c => `<div style="font-size: 11px; line-height: 1.35;">${c.caliber_suitability_considerations}</div>`);
+      addMatrixRow('Irrigation Pressure Risk', c => `<div style="font-size: 11px; line-height: 1.35;">${c.irrigation_pressure_risk}</div>`);
+      addMatrixRow('Uncertainty Flags', c => {
         if (!c.uncertainty_flags || c.uncertainty_flags.length === 0) {
-          return '<span style="color: #10b981; font-size: 11px;">✓ No anatomical flags</span>';
+          return '<span style="color: #10b981; font-size: 11px;">No anatomical flags</span>';
         }
         return c.uncertainty_flags.map(f => `<span class="version-pill" style="background: rgba(245, 158, 11, 0.2); color: #fbbf24; font-size: 9px; display: inline-block; margin-bottom: 2px;">${f}</span>`).join(' ');
       });
-      addMatrixRow('📋 Clinical Trade-Off Summary', c => `<div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">${c.clinical_tradeoff_summary}</div>`);
+      addMatrixRow('Clinical Trade-Off Summary', c => `<div style="font-size: 11px; color: var(--text-secondary); line-height: 1.4;">${c.clinical_tradeoff_summary}</div>`);
 
       table.appendChild(tbody);
     }
@@ -2099,7 +2099,7 @@
           throw new Error(err.detail || 'Could not record trial');
         }
         const data = await res.json();
-        alert(`🎯 Trial Recorded Successfully (${data.trial_id})!\n\nSession: ${sessionId}\nTotal Trials Recorded: ${data.trials_in_session}`);
+        window.showToast(`Trial recorded: ${data.trial_id}`, 'success');
         document.getElementById('study-trials-count').textContent = data.trials_in_session;
         resetStudyTimer();
       } catch (err) {
@@ -2383,7 +2383,7 @@
                 <td style="padding: 4px 6px;">${(cMet.concordance_fraction * 100).toFixed(0)}% (${cMet.num_readers} readers)</td>
                 <td style="padding: 4px 6px; font-family: var(--font-mono);">${cMet.consensus_centroid_lps.join(', ')}</td>
                 <td style="padding: 4px 6px; color: ${isWarn ? '#ef4444' : '#10b981'}; font-weight: 700;">${cMet.dispersion_radius_mm} mm</td>
-                <td style="padding: 4px 6px;">${isWarn ? '⚠️ HIGH DISPERSION' : '✓ CONCORDANT'}</td>
+                <td style="padding: 4px 6px;">${isWarn ? 'HIGH DISPERSION' : 'CONCORDANT'}</td>
               </tr>
             `;
           }
@@ -2426,7 +2426,7 @@
         const rep = await res.json();
         currentValidationReportJson = rep;
         renderValidationReport(rep);
-        alert(`🎯 Milestone M15-V Benchmark Completed!\n\nExecutive Decision: ${rep.executive_decision}\nEvaluable Cases: ${rep.evaluable_cases} (Non-opacified rejected: ${rep.rejected_non_opacified_cases})\nMean Calyx Sensitivity: ${(rep.mean_calyx_sensitivity * 100).toFixed(1)}%\nMean Centerline MAE: ${rep.mean_centerline_mae_mm.toFixed(2)} mm`);
+        window.showToast(`M15-V Benchmark Completed: ${rep.executive_decision}`, 'success');
         await loadCtuCohort();
       } catch (err) {
         alert('Benchmark execution error: ' + err.message);
@@ -2500,7 +2500,7 @@
           throw new Error(err.detail || 'Ingest failed');
         }
         const data = await res.json();
-        alert(`✓ CTU Case Ingested: ${data.case_id}\nStatus: ${data.status}\nReaders: ${data.reader_count}`);
+        window.showToast(`CTU Case Ingested: ${data.case_id} (${data.status})`, 'success');
         await loadCtuCohort();
         toggleIngestDrawer();
       } catch (err) {
