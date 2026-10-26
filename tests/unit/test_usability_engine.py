@@ -344,76 +344,105 @@ def test_api_usability_specification_endpoints():
 
 
 def test_api_usability_runtime_interlock_endpoints():
-    # 1. Laterality confirm pass
-    lat_res = client.post(
-        "/api/usability/cases/CASE_API_01/laterality-confirm",
-        json={
-            "clinician_selected_side": "LEFT",
-            "ct_metadata_side": "LEFT",
-            "landmark_checks": {"liver_right": True},
-            "is_two_step_confirmed": True
-        }
-    )
-    assert lat_res.status_code == 200
-    assert lat_res.json()["verified"] is True
+    import shutil
+    from app.api.case_store import get_case_dir, save_case_meta
 
-    # Laterality conflict fail
-    lat_fail = client.post(
-        "/api/usability/cases/CASE_API_01/laterality-confirm",
-        json={
-            "clinician_selected_side": "RIGHT",
-            "ct_metadata_side": "LEFT",
-            "landmark_checks": {},
-            "is_two_step_confirmed": True
-        }
-    )
-    assert lat_fail.status_code == 400
+    case_id = "CASE_API_01"
+    save_case_meta(case_id, {
+        "case_id": case_id,
+        "is_demo": True,
+        "state": "READY",
+        "target_side": "left",
+        "created_at": "2026-10-21T00:00:00Z"
+    })
 
-    # 2. Position confirm
-    pos_res = client.post(
-        "/api/usability/cases/CASE_API_01/position-confirm",
-        json={
-            "ct_acquisition_position": "HFS",
-            "planned_operative_position": "PRONE_STANDARD",
-            "is_clinician_confirmed": True
-        }
-    )
-    assert pos_res.status_code == 200
-    assert pos_res.json()["confirmed"] is True
+    try:
+        # 0. Verify nonexistent case fails closed with HTTP 404
+        nonexistent_res = client.post(
+            "/api/usability/cases/NONEXISTENT_CASE_999/laterality-confirm",
+            json={
+                "clinician_selected_side": "LEFT",
+                "ct_metadata_side": "LEFT",
+                "landmark_checks": {"liver_right": True},
+                "is_two_step_confirmed": True
+            }
+        )
+        assert nonexistent_res.status_code == 404
 
-    # 3. Depth check
-    depth_res = client.post(
-        "/api/usability/cases/CASE_API_01/depth-check",
-        json={
-            "planned_depth_mm": 90.0,
-            "current_penetration_mm": 88.0,
-            "calyx_luminal_depth_mm": 8.0,
-            "metrology_uncertainty_u95_mm": 1.64
-        }
-    )
-    assert depth_res.status_code == 200
-    assert depth_res.json()["telemetry"]["status"] == "TARGET_PAPILLA_ZONE"
+        # 1. Laterality confirm pass
+        lat_res = client.post(
+            f"/api/usability/cases/{case_id}/laterality-confirm",
+            json={
+                "clinician_selected_side": "LEFT",
+                "ct_metadata_side": "LEFT",
+                "landmark_checks": {"liver_right": True},
+                "is_two_step_confirmed": True
+            }
+        )
+        assert lat_res.status_code == 200
+        assert lat_res.json()["verified"] is True
 
-    # 4. Verbal communication card
-    card_res = client.get("/api/usability/cases/CASE_API_01/verbal-card?carm_model=philips_zenition_70")
-    assert card_res.status_code == 200
-    card_data = card_res.json()
-    assert "bullseye_verbal_script" in card_data
+        # Laterality conflict fail
+        lat_fail = client.post(
+            f"/api/usability/cases/{case_id}/laterality-confirm",
+            json={
+                "clinician_selected_side": "RIGHT",
+                "ct_metadata_side": "LEFT",
+                "landmark_checks": {},
+                "is_two_step_confirmed": True
+            }
+        )
+        assert lat_fail.status_code == 400
 
-    # 5. C-arm entry transposition validate
-    val_res = client.post(
-        "/api/usability/carm-entry-validate",
-        json={
-            "intended_primary_deg": 25.0,
-            "intended_secondary_deg": -15.0,
-            "entered_primary_deg": -25.0,
-            "entered_secondary_deg": -15.0,
-            "tolerance_deg": 1.0
-        }
-    )
-    assert val_res.status_code == 200
-    assert val_res.json()["is_correct"] is False
-    assert val_res.json()["transposition_error_type"] == "PRIMARY_ORBITAL_SIGN_INVERSION"
+        # 2. Position confirm
+        pos_res = client.post(
+            f"/api/usability/cases/{case_id}/position-confirm",
+            json={
+                "ct_acquisition_position": "HFS",
+                "planned_operative_position": "PRONE_STANDARD",
+                "is_clinician_confirmed": True
+            }
+        )
+        assert pos_res.status_code == 200
+        assert pos_res.json()["confirmed"] is True
+
+        # 3. Depth check
+        depth_res = client.post(
+            f"/api/usability/cases/{case_id}/depth-check",
+            json={
+                "planned_depth_mm": 90.0,
+                "current_penetration_mm": 88.0,
+                "calyx_luminal_depth_mm": 8.0,
+                "metrology_uncertainty_u95_mm": 1.64
+            }
+        )
+        assert depth_res.status_code == 200
+        assert depth_res.json()["telemetry"]["status"] == "TARGET_PAPILLA_ZONE"
+
+        # 4. Verbal communication card
+        card_res = client.get(f"/api/usability/cases/{case_id}/verbal-card?carm_model=philips_zenition_70")
+        assert card_res.status_code == 200
+        card_data = card_res.json()
+        assert "bullseye_verbal_script" in card_data
+
+        # 5. C-arm entry transposition validate
+        val_res = client.post(
+            "/api/usability/carm-entry-validate",
+            json={
+                "intended_primary_deg": 25.0,
+                "intended_secondary_deg": -15.0,
+                "entered_primary_deg": -25.0,
+                "entered_secondary_deg": -15.0,
+                "tolerance_deg": 1.0
+            }
+        )
+        assert val_res.status_code == 200
+        assert val_res.json()["is_correct"] is False
+        assert val_res.json()["transposition_error_type"] == "PRIMARY_ORBITAL_SIGN_INVERSION"
+    finally:
+        case_dir = get_case_dir(case_id)
+        if case_dir.is_dir():
+            shutil.rmtree(case_dir, ignore_errors=True)
 
 
 def test_api_usability_psychometric_analytics():
