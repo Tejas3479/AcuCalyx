@@ -1,0 +1,40 @@
+# Version control
+.git
+.gitignore
+.github
+
+# Python caches and virtual environments
+__pycache__
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Sensitive data stores and patient cases (mount via Docker volumes)
+data/cases/*
+!data/cases/.gitkeep
+data/doctors.json
+data/usability_sessions/*
+!data/usability_sessions/.gitkeep
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/outputs/*
+!data/outputs/.gitkeep
+
+# Testing and development artifacts
+tests/
+scratch/
+*.log
+*.tmp*
+*.png
+.vscode
+.idea
+node_modules/

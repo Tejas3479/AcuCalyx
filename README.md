@@ -204,8 +204,8 @@ AcuCalyx maintains a comprehensive, automated test suite spanning unit tests, cl
 python -m pytest tests/unit tests/golden tests/integration tests/property
 ```
 
-### Test Suite Structure (240 Tests, 100% Passing):
-* **Unit Tests (216 tests):**
+### Test Suite Structure (303 Tests, 100% Passing):
+* **Unit Tests (279 tests):**
   * Geometry, Coordinates & SimpleITK (`test_coordinates.py`, `test_volumetry.py`)
   * DICOM & NIfTI Ingestion (`test_dicom_ingestion.py`, `test_nifti_ingestion.py`, `test_quality_gate.py`)
   * Trajectory Corridors & Optimization (`test_planning_corridors.py`, `test_pareto.py`, `test_m12_pareto_planning.py`)
@@ -214,7 +214,7 @@ python -m pytest tests/unit tests/golden tests/integration tests/property
   * Endoscopy Reachability & Kinematics (`test_m15_endoscopy_reachability.py`)
   * Integrations & External ML Pipelines (`test_m15_integrations.py`)
   * Usability & Safety Interlocks (`test_hazard_engine.py`, `test_usability_engine.py`, `test_phase45_calibration.py`)
-  * Regulatory, SBOM & PHI Guard (`test_regulatory_and_cybersecurity.py`, `test_premarket_submission_and_release.py`)
+  * Cybersecurity, RBAC & Sweeps (`test_security_sweep.py`, `test_auth_and_learning.py`, `test_regulatory_and_cybersecurity.py`, `test_premarket_submission_and_release.py`)
 * **Golden Challenge Cases (19 tests):**
   * Normal anatomy, retrorenal colon hazard, staghorn calculus, supracostal high kidney, solitary kidney, severe hydronephrosis, thick-slice rejection, gantry tilt rejection, intercostal NV bundle risk.
 * **Property-Based Invariants (4 tests):**
@@ -333,16 +333,15 @@ AcuCalyx/
 │   ├── mdf_indexer.py                 # Medical Device File (MDF) automated indexer
 │   └── pms_analyzer.py                # Postmarket complaint trend & signal detector
 │
-├── tests/                             # Verification & Test Suite (240 Tests)
+├── tests/                             # Verification & Test Suite (303 Tests)
 │   ├── golden/                        # 19 clinical challenge cases & expert validation
 │   ├── integration/                   # Full end-to-end pipeline execution test
 │   ├── phantom/                       # Synthetic CT phantom generator fixture
 │   ├── property/                      # Mathematical invariants (SE(3), SDF, Pareto)
-│   └── unit/                          # 216 unit tests across all submodules
+│   └── unit/                          # 279 unit tests across all submodules
 │
 └── data/                              # Anatomical reference meshes & sample models
-    ├── anatomical_preview/            # High-resolution 3D GLB renal structures
-    └── test_preview/                  # Testing GLB/STL mesh fixtures
+    └── anatomical_preview/            # High-resolution 3D GLB renal structures
 ```
 
 ---

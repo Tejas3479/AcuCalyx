@@ -23,6 +23,7 @@ wheels/
 .pytest_cache/
 .coverage
 htmlcov/
+/*.png
 
 data/raw/*
 data/processed/*

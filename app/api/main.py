@@ -19,6 +19,7 @@ import logging
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 from typing import Any, Dict, List, Optional
 import zipfile
@@ -47,7 +48,7 @@ from app.api.case_store import (
     resolve_case_input_path,
     verify_case_access,
 )
-from app.api.auth import Doctor, get_current_doctor
+from app.api.auth import Doctor, get_current_doctor, DATA_DIR, DOCTORS_FILE, DEFAULT_DOCTORS
 from app.api.schemas import (
     CaseState, CaseSummaryResponse, CaseUploadResponse,
     PlanGenerationRequest, TrajectorySelectionRequest, ManualOverrideRequest,
@@ -78,16 +79,20 @@ app = FastAPI(
     description="Computational Planning and Virtual Fluoroscopy Simulator for Percutaneous Nephrolithotomy (PCNL)"
 )
 
+_cors_env = os.getenv("ACUCALYX_CORS_ORIGINS")
+_default_origins = [
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+ALLOWED_ORIGINS = [o.strip() for o in _cors_env.split(",") if o.strip()] if _cors_env else _default_origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8000",
-        "http://127.0.0.1:8000",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -95,14 +100,26 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_no_cache_headers(request, call_next):
-    """Enforces no-cache policy on frontend assets to guarantee real-time UI updates."""
+async def security_and_cache_headers(request, call_next):
+    """Applies OWASP security headers and optimized caching policies."""
     response = await call_next(request)
     path = request.url.path
-    if path == "/" or path.endswith((".html", ".js", ".css", ".json")):
+
+    # Standard security headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    if os.getenv("ACUCALYX_ENV") == "production":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+
+    # Optimized Cache-Control: Cache vendor assets, revalidate application resources
+    if path.startswith("/vendor/") or "/assets/" in path:
+        response.headers["Cache-Control"] = "public, max-age=86400"
+    elif path == "/" or path.endswith((".html", ".js", ".css", ".json")):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
         response.headers["Expires"] = "0"
+
     return response
 
 
@@ -142,6 +159,20 @@ def set_cached_volume(case_id: str, vol: np.ndarray, spatial: Any) -> None:
 @app.get("/api/health")
 def health_check():
     return {"status": "ok", "system": "AcuCalyx", "version": "2.1.0"}
+
+
+@app.get("/api/ready")
+def readiness_check():
+    """Readiness probe: validates filesystem access and essential storage subsystems."""
+    checks = {
+        "cases_directory": CASES_DIR.is_dir(),
+        "data_directory": DATA_DIR.is_dir(),
+        "auth_configured": DOCTORS_FILE.is_file() or len(DEFAULT_DOCTORS) > 0,
+    }
+    all_ready = all(checks.values())
+    if not all_ready:
+        raise HTTPException(status_code=503, detail={"status": "not_ready", "checks": checks})
+    return {"status": "ready", "system": "AcuCalyx", "checks": checks}
 
 
 @app.get("/api/cases", response_model=List[CaseSummaryResponse])
@@ -308,18 +339,30 @@ async def upload_case(
         safe_filename = f"series_{datetime.now().strftime('%H%M%S')}.dcm"
 
     stem = Path(safe_filename).stem.replace(".nii", "").replace(" ", "_")
-    stem = re.sub(r"[^A-Za-z0-9_-]", "_", stem)
-    case_id = f"CASE_{stem}_{datetime.now().strftime('%H%M%S')}"
+    stem = re.sub(r"[^A-Za-z0-9_-]", "_", stem)[:24]
+    random_suffix = secrets.token_hex(4).upper()
+    case_id = f"CASE_{stem}_{random_suffix}"
 
     case_dir = get_case_dir(case_id)
     raw_dir = case_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
     dest_path = raw_dir / safe_filename
 
-    # Stream file to disk in bounded chunks to prevent RAM exhaustion
+    # Stream file to disk in bounded chunks with magic byte check to prevent executable uploads
+    disallowed_prefixes = (b"MZ", b"\x7fELF", b"#!/", b"<?php")
+    first_chunk = True
     total_bytes = 0
     with open(dest_path, "wb") as f:
         while chunk := await file.read(1024 * 1024):
+            if first_chunk:
+                first_chunk = False
+                if any(chunk.startswith(p) for p in disallowed_prefixes):
+                    dest_path.unlink(missing_ok=True)
+                    shutil.rmtree(case_dir, ignore_errors=True)
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Disallowed executable or script format rejected."
+                    )
             total_bytes += len(chunk)
             if total_bytes > MAX_UPLOAD_SIZE:
                 dest_path.unlink(missing_ok=True)
@@ -404,14 +447,17 @@ async def upload_case(
             img = nib.load(str(dest_path))
             header = img.header
             if hasattr(header, "get"):
-                if "descrip" in header:
-                    header["descrip"] = b""
-                if "aux_file" in header:
-                    header["aux_file"] = b""
+                for field in ("descrip", "aux_file", "intent_name"):
+                    if field in header:
+                        header[field] = b"" if isinstance(header[field], (bytes, bytearray)) else ""
             img.to_filename(str(dest_path))
             log_case_audit_event(case_id, "NIFTI_HEADER_SCRUBBED", {"filename": safe_filename})
         except Exception as e:
-            logger.debug(f"NIfTI header scrub note: {e}")
+            if os.getenv("ACUCALYX_ENV") == "production":
+                logger.error(f"Fail-closed: NIfTI header de-identification failed: {e}")
+                shutil.rmtree(case_dir, ignore_errors=True)
+                raise HTTPException(status_code=422, detail=f"HIPAA/PS 3.15 de-identification failed on NIfTI: {e}")
+            logger.warning(f"NIfTI header scrub note (test environment): {e}")
 
     now_iso = datetime.now(timezone.utc).isoformat()
     meta = {
@@ -428,9 +474,9 @@ async def upload_case(
         "candidate_count": 0,
         "owner_doctor_id": current_doctor.doctor_id,
         "owner_doctor_name": current_doctor.full_name,
-        "patient_id": f"PT-{abs(hash(case_id)) % 9000 + 1000}",
-        "patient_age": 58,
-        "patient_sex": "M",
+        "patient_id": f"PT-{secrets.token_hex(3).upper()}",
+        "patient_age": None,
+        "patient_sex": "UNKNOWN",
         "clinical_indication": "Clinical CT scan uploaded for PCNL puncture planning",
         "privacy_status": "RESTRICTED_ATTENDING_ONLY",
         "laterality_confirmation": None,
@@ -538,15 +584,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest, meta: Dict[str, 
         pipeline_cfg["require_clinical_segmentation"] = True
         pipeline_cfg["segmentation_method"] = req.segmentation_method or SegmentationMethod.TOTALSEGMENTATOR.value
 
-    # Transition state to VALIDATING
-    meta["state"] = CaseState.VALIDATING.value
-    save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "PLANNING_STARTED", {
-        "target_side": req.target_side,
-        "is_demo": is_demo,
-        "segmentation_method": pipeline_cfg["segmentation_method"]
-    })
-
+    # Acquire semaphore BEFORE state transition so 429 does not alter case state
     acquired = _PLANNING_SEMAPHORE.acquire(blocking=False)
     if not acquired:
         raise HTTPException(
@@ -554,6 +592,15 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest, meta: Dict[str, 
             detail="Server busy: Another 3D computational planning pipeline is currently running. Please retry in a few moments."
         )
     try:
+        # Transition state to VALIDATING only after semaphore acquisition
+        meta["state"] = CaseState.VALIDATING.value
+        save_case_meta(case_id, meta)
+        log_case_audit_event(case_id, "PLANNING_STARTED", {
+            "target_side": req.target_side,
+            "is_demo": is_demo,
+            "segmentation_method": pipeline_cfg["segmentation_method"]
+        })
+
         res: PlanningPipelineResult = run_planning_pipeline(
             input_path=input_path,
             output_dir=artifacts_dir,
@@ -567,7 +614,7 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest, meta: Dict[str, 
         meta["state"] = CaseState.REJECTED.value
         meta["clinical_notice"] = f"Clinical fail-closed gate: {str(ve)}"
         save_case_meta(case_id, meta)
-        raise HTTPException(status_code=500, detail=str(ve))
+        raise HTTPException(status_code=422, detail=str(ve))
     except Exception as e:
         logger.exception("Pipeline execution failed")
         meta["state"] = CaseState.REJECTED.value
@@ -594,18 +641,32 @@ def run_case_planning(case_id: str, req: PlanGenerationRequest, meta: Dict[str, 
             if not has_crit:
                 selected_candidate = c
                 break
-        if selected_candidate is None and res.candidates:
-            selected_candidate = res.candidates[0]
 
-        meta["active_candidate_id"] = selected_candidate.candidate_id if selected_candidate else None
+        if selected_candidate is None and res.candidates:
+            if is_demo:
+                # In demo/phantom rehearsal mode, select candidate 0 for tutorial/rehearsal workflow
+                selected_candidate = res.candidates[0]
+                meta["active_candidate_id"] = selected_candidate.candidate_id
+                meta["hazard_status"] = "DEMO_REHEARSAL_TRAJECTORY"
+                meta["clinical_notice"] = f"Generated {len(res.candidates)} Pareto candidates (Demo Rehearsal Mode)."
+            else:
+                # Clinical Safety Invariant: Never auto-select a trajectory that intersects critical hazards for real patients
+                meta["active_candidate_id"] = None
+                meta["hazard_status"] = "ALL_CANDIDATES_CRITICAL_HAZARD"
+                meta["clinical_notice"] = (
+                    "SAFETY WARNING: All computed trajectories intersect critical anatomical hazards. "
+                    "No active trajectory auto-selected. Clinician review and explicit selection required."
+                )
+        else:
+            meta["active_candidate_id"] = selected_candidate.candidate_id if selected_candidate else None
+            meta["hazard_status"] = "SAFE_OR_CONDITIONAL"
+            meta["clinical_notice"] = f"Generated {len(res.candidates)} Pareto candidate trajectories."
 
         # Apply pending overrides and resolve STALE status
         if meta.get("pending_overrides"):
             meta["applied_overrides"] = meta.get("applied_overrides", []) + meta["pending_overrides"]
             meta["pending_overrides"] = []
             meta["override_pending"] = False
-
-        meta["clinical_notice"] = f"Generated {len(res.candidates)} Pareto candidate trajectories."
 
     save_case_meta(case_id, meta)
     log_case_audit_event(case_id, "PLANNING_COMPLETED", {
@@ -1024,21 +1085,29 @@ def get_candidate_comparison_matrix(case_id: str):
 
 
 @app.get("/api/cases/{case_id}/meshes/{mesh_name}")
-def get_case_mesh(case_id: str, mesh_name: str, meta: Dict[str, Any] = Depends(verify_case_access)):
+def get_case_mesh(
+    case_id: str,
+    mesh_name: str,
+    meta: Dict[str, Any] = Depends(verify_case_access),
+    allow_template: bool = Query(default=False, description="Allow falling back to reference template mesh")
+):
     """Streams binary GLB 3D surface meshes for Three.js WebGL visualization."""
     case_dir = get_case_dir(case_id)
-    # Clean filename
     clean_name = mesh_name if mesh_name.endswith(".glb") else f"{mesh_name}.glb"
     mesh_path = case_dir / "artifacts" / "meshes" / clean_name
     is_synthetic_template = False
 
     if not mesh_path.is_file():
+        is_demo = meta.get("is_demo", False)
         preview_mesh = BASE_DIR / "data" / "anatomical_preview" / clean_name
-        if preview_mesh.is_file():
+        if (is_demo or allow_template) and preview_mesh.is_file():
             mesh_path = preview_mesh
             is_synthetic_template = True
         else:
-            raise HTTPException(status_code=404, detail=f"3D Mesh '{clean_name}' not found for case {case_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Patient-specific 3D mesh '{clean_name}' not found for case {case_id}. Planning pipeline must be run."
+            )
 
     headers = {
         "X-AcuCalyx-Intended-Use": "Display and Rehearsal Only. Non-Sterile.",
@@ -1327,7 +1396,11 @@ def get_case_nephrolithometry(case_id: str, meta: Dict[str, Any] = Depends(verif
 
 
 @app.get("/api/cases/{case_id}/fluoroscopy/{candidate_id}")
-def get_virtual_fluoroscopy(case_id: str, candidate_id: str):
+def get_virtual_fluoroscopy(
+    case_id: str,
+    candidate_id: str,
+    meta: Dict[str, Any] = Depends(verify_case_access)
+):
     """Returns virtual fluoroscopy C-arm viewing vectors and 2D projected needle coordinates."""
     case_dir = get_case_dir(case_id)
     c_file = case_dir / "artifacts" / "candidates.json"
@@ -1621,29 +1694,29 @@ app.include_router(auth_router)
 from app.api.routes_learning import router as learning_router
 app.include_router(learning_router)
 
-# Mount DRR Fluoroscopy Routes
+# Mount DRR Fluoroscopy Routes (Protected with case access)
 from app.api.routes_drr import router as drr_router
-app.include_router(drr_router)
+app.include_router(drr_router, dependencies=[Depends(verify_case_access)])
 
-# Mount Rehearsal & Phantom Metrology Routes (Phase 5 / M3)
+# Mount Rehearsal & Phantom Metrology Routes (Phase 5 / M3 - Authenticated Clinician)
 from app.api.routes_rehearsal import router as rehearsal_router
-app.include_router(rehearsal_router)
+app.include_router(rehearsal_router, dependencies=[Depends(get_current_doctor)])
 
-# Mount Usability & Human Factors Routes (Phase 6 / M4)
+# Mount Usability & Human Factors Routes (Phase 6 / M4 - Authenticated Clinician)
 from app.api.routes_usability import router as usability_router
-app.include_router(usability_router)
+app.include_router(usability_router, dependencies=[Depends(get_current_doctor)])
 
-# Mount Multimodal Ultrasound & Positioning Uncertainty Routes (Milestone M14)
+# Mount Multimodal Ultrasound & Positioning Uncertainty Routes (Milestone M14 - Protected)
 from app.api.routes_ultrasound import router as ultrasound_router
-app.include_router(ultrasound_router)
+app.include_router(ultrasound_router, dependencies=[Depends(verify_case_access)])
 
-# Mount Endoscopic Reachability & Computed Endoluminal Rehearsal Routes (Milestone M15)
+# Mount Endoscopic Reachability & Computed Endoluminal Rehearsal Routes (Milestone M15 - Protected)
 from app.api.routes_endoscopy import router as endoscopy_router
-app.include_router(endoscopy_router)
+app.include_router(endoscopy_router, dependencies=[Depends(verify_case_access)])
 
-# Mount CT Urography Feasibility & M15-V Validation Gate Routes (Horizon 3 / M15.1)
+# Mount CT Urography Feasibility & M15-V Validation Gate Routes (Horizon 3 / M15.1 - Authenticated)
 from app.api.routes_validation import router as validation_router
-app.include_router(validation_router)
+app.include_router(validation_router, dependencies=[Depends(get_current_doctor)])
 
 # Mount Frontend UI Static Files
 if FRONTEND_DIR.exists():

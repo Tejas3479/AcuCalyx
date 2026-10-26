@@ -119,7 +119,7 @@ class CaseSummaryResponse(BaseModel):
 
 
 class PlanGenerationRequest(BaseModel):
-    target_side: str = Field(default="left", description="'left' or 'right'")
+    target_side: str = Field(default="left", pattern="^(left|right)$", description="'left' or 'right'")
     coarse_step_mm: float = Field(default=15.0, description="Flank skin sampling step")
     monte_carlo_samples: int = Field(default=200, description="Stochastic perturbation iterations")
     allow_marginal: bool = Field(default=False, description="Proceed with marginal DICOM quality")

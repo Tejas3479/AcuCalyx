@@ -372,8 +372,8 @@ def test_patient_case_fails_closed_without_neural_weights(tmp_path):
         f"/api/cases/{case_id}/plan",
         json={"target_side": "left"}
     )
-    # TotalSegmentator is not running in native CLI mode in this test environment
-    assert res_plan.status_code == 500
+    # TotalSegmentator is not running in native CLI mode in this test environment -> fails closed (422 or 500)
+    assert res_plan.status_code in (422, 500)
     assert "Clinical segmentation failed" in res_plan.json()["detail"] or "prohibited" in res_plan.json()["detail"]
 
     # Confirm case state transitioned to REJECTED

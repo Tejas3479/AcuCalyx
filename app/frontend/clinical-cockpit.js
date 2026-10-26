@@ -401,7 +401,13 @@
 
       // 3. 3D Meshes (Realistic Anatomical Kidney Cross-Section & Highlighted Stone)
       const warnBadge = document.getElementById('synthetic-mesh-warning');
-      if (warnBadge) warnBadge.style.display = 'none';
+      if (warnBadge) {
+        if (currentCaseMeta && (currentCaseMeta.is_demo || currentCaseMeta.segmentation_provenance?.source === 'SYNTHETIC_TEMPLATE' || currentCaseMeta.segmentation_provenance?.model === 'SYNTHETIC_TEMPLATE')) {
+          warnBadge.style.display = 'block';
+        } else {
+          warnBadge.style.display = 'none';
+        }
+      }
       viewer3d.clearScene();
       await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
       await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);

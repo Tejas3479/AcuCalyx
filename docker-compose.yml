@@ -12,11 +12,13 @@ services:
     environment:
       - ACUCALYX_ENV=production
       - ACUCALYX_REQUIRE_AUTH=1
-      - ACUCALYX_AUTH_SECRET=${ACUCALYX_AUTH_SECRET:-ACUCALYX_SECURE_SURGICAL_JWT_PROD_DEPLOYMENT_KEY_2026}
-      - ACUCALYX_DEID_SECRET=${ACUCALYX_DEID_SECRET:-ACUCALYX_SECURE_DEID_HMAC_PROD_DEPLOYMENT_KEY_2026}
+      - ACUCALYX_AUTH_SECRET=${ACUCALYX_AUTH_SECRET:?Production Error: ACUCALYX_AUTH_SECRET must be set with openssl rand -hex 32}
+      - ACUCALYX_DEID_SECRET=${ACUCALYX_DEID_SECRET:?Production Error: ACUCALYX_DEID_SECRET must be set with openssl rand -hex 32}
       - ACUCALYX_LOG_LEVEL=INFO
     volumes:
       - ./data/cases:/app/data/cases
+      - ./data/doctors.json:/app/data/doctors.json
+      - ./data/usability_sessions:/app/data/usability_sessions
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

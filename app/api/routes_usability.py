@@ -14,10 +14,11 @@ import json
 from pathlib import Path
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 import numpy as np
 
+from app.api.auth import Doctor, get_current_doctor
 from app.api.case_store import load_case_meta, save_case_meta, log_case_audit_event
 
 from acucalyx.fluoroscopy.carm_profile import PHILIPS_ZENITION_70, get_carm_profile
@@ -244,12 +245,29 @@ def get_critical_tasks_and_urra():
 
 
 @router.post("/cases/{case_id}/laterality-confirm")
-def confirm_laterality(case_id: str, request: LateralityConfirmRequest):
+def confirm_laterality(
+    case_id: str,
+    request: LateralityConfirmRequest,
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
     """Interlock U1: Enforces multi-evidence laterality confirmation and blocks wrong-kidney planning."""
+    # Enforce case existence and doctor access
+    meta = load_case_meta(case_id)
+    if not meta.get("is_demo", False) and current_doctor.role not in ("CHIEF_SURGEON", "ADMIN"):
+        owner_id = meta.get("owner_doctor_id")
+        if owner_id and owner_id != current_doctor.doctor_id:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: Case '{case_id}' belongs to another clinician's private partition."
+            )
+
+    # Server-side authoritative CT side derivation (DICOM orientation / verified meta)
+    server_ct_side = meta.get("target_side") or request.ct_metadata_side
+
     result = LateralityVerificationInterlock.verify_laterality(
         case_id=case_id,
         clinician_selected_side=request.clinician_selected_side,
-        ct_metadata_side=request.ct_metadata_side,
+        ct_metadata_side=server_ct_side,
         landmark_checks=request.landmark_checks,
         is_two_step_confirmed=request.is_two_step_confirmed
     )
@@ -257,34 +275,30 @@ def confirm_laterality(case_id: str, request: LateralityConfirmRequest):
         raise HTTPException(status_code=400, detail=result.error_message)
 
     # Persist authoritative laterality confirmation state
-    try:
-        meta = load_case_meta(case_id)
-    except HTTPException as e:
-        if e.status_code == 404:
-            meta = {
-                "case_id": case_id,
-                "is_demo": False,
-                "state": "READY",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        else:
-            raise
     meta["laterality_confirmation"] = {
         "is_verified": True,
         "confirmed_side": result.confirmed_side.lower(),
         "ct_metadata_side": result.ct_metadata_side.lower(),
         "verified_at": datetime.now(timezone.utc).isoformat(),
         "landmark_checks": request.landmark_checks,
-        "is_two_step_confirmed": request.is_two_step_confirmed
+        "is_two_step_confirmed": request.is_two_step_confirmed,
+        "verified_by_doctor_id": current_doctor.doctor_id,
+        "verified_by_doctor_name": current_doctor.full_name
     }
     meta["target_side"] = result.confirmed_side.lower()
     save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "LATERALITY_CONFIRMED", {
-        "confirmed_side": result.confirmed_side,
-        "ct_metadata_side": result.ct_metadata_side,
-        "landmark_checks": request.landmark_checks
-    })
+    log_case_audit_event(
+        case_id,
+        "LATERALITY_CONFIRMED",
+        {
+            "confirmed_side": result.confirmed_side,
+            "ct_metadata_side": result.ct_metadata_side,
+            "landmark_checks": request.landmark_checks,
+            "confirmed_by": current_doctor.full_name,
+            "doctor_id": current_doctor.doctor_id
+        },
+        user=current_doctor.full_name
+    )
 
     return {
         "case_id": case_id,
@@ -295,8 +309,22 @@ def confirm_laterality(case_id: str, request: LateralityConfirmRequest):
 
 
 @router.post("/cases/{case_id}/position-confirm")
-def confirm_surgical_position(case_id: str, request: PositionConfirmRequest):
+def confirm_surgical_position(
+    case_id: str,
+    request: PositionConfirmRequest,
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
     """Interlock U2: Manages 5-stage surgical orientation and SE(3) transformation tracking."""
+    # Enforce case existence and doctor access
+    meta = load_case_meta(case_id)
+    if not meta.get("is_demo", False) and current_doctor.role not in ("CHIEF_SURGEON", "ADMIN"):
+        owner_id = meta.get("owner_doctor_id")
+        if owner_id and owner_id != current_doctor.doctor_id:
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: Case '{case_id}' belongs to another clinician's private partition."
+            )
+
     ok, t_mat, msg = SurgicalPositionInterlock.resolve_surgical_pose(
         ct_acquisition_position=request.ct_acquisition_position,
         planned_operative_position=request.planned_operative_position,
@@ -306,31 +334,27 @@ def confirm_surgical_position(case_id: str, request: PositionConfirmRequest):
         raise HTTPException(status_code=400, detail=msg)
 
     # Persist authoritative surgical position confirmation state
-    try:
-        meta = load_case_meta(case_id)
-    except HTTPException as e:
-        if e.status_code == 404:
-            meta = {
-                "case_id": case_id,
-                "is_demo": False,
-                "state": "READY",
-                "created_at": datetime.now(timezone.utc).isoformat(),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
-        else:
-            raise
     meta["surgical_position_confirmation"] = {
         "is_confirmed": True,
         "operative_position": request.planned_operative_position.value,
         "ct_acquisition_position": request.ct_acquisition_position,
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
-        "transformation_matrix_4x4": t_mat.tolist() if t_mat is not None else None
+        "transformation_matrix_4x4": t_mat.tolist() if t_mat is not None else None,
+        "confirmed_by_doctor_id": current_doctor.doctor_id,
+        "confirmed_by_doctor_name": current_doctor.full_name
     }
     save_case_meta(case_id, meta)
-    log_case_audit_event(case_id, "SURGICAL_POSITION_CONFIRMED", {
-        "operative_position": request.planned_operative_position.value,
-        "ct_acquisition_position": request.ct_acquisition_position
-    })
+    log_case_audit_event(
+        case_id,
+        "SURGICAL_POSITION_CONFIRMED",
+        {
+            "operative_position": request.planned_operative_position.value,
+            "ct_acquisition_position": request.ct_acquisition_position,
+            "confirmed_by": current_doctor.full_name,
+            "doctor_id": current_doctor.doctor_id
+        },
+        user=current_doctor.full_name
+    )
 
     return {
         "case_id": case_id,

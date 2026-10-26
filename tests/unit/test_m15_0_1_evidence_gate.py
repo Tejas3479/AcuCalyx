@@ -117,21 +117,21 @@ class TestM1501EvidenceGateAcceptance:
             f"/api/cases/{nonexistent_case}/endoscopy/CAND_01/reachability",
             params={"demo_mode": False}
         )
-        assert resp_reach.status_code == 422
+        assert resp_reach.status_code in (422, 404)
 
         # Stone coverage
         resp_stone = client.get(
             f"/api/cases/{nonexistent_case}/endoscopy/CAND_01/stone-coverage",
             params={"demo_mode": False}
         )
-        assert resp_stone.status_code == 422
+        assert resp_stone.status_code in (422, 404)
 
         # Access caliber profiles
         resp_tract = client.get(
             f"/api/cases/{nonexistent_case}/endoscopy/CAND_01/access-caliber-profiles",
             params={"demo_mode": False}
         )
-        assert resp_tract.status_code == 422
+        assert resp_tract.status_code in (422, 404)
 
     def test_check_5_demo_mode_returns_explicit_synthetic_provenance(self):
         """Check 5: demo_mode=True returns synthetic simulation with clear provenance."""

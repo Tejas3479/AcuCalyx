@@ -92,21 +92,31 @@ class DeIdentificationProfile:
     }
 
 
+_INSECURE_DEID_SECRETS = {
+    "ACUCALYX_CANONICAL_TEST_SECRET_2026",
+    "ACUCALYX_SECURE_DEID_HMAC_PROD_DEPLOYMENT_KEY_2026",
+    "generate_strong_secret_with_openssl_rand_hex_32",
+}
+
+
 class PHIGuard:
     """Executes PS 3.15 Annex E de-identification and verifies privacy compliance."""
 
     def __init__(self, hmac_key: Optional[bytes] = None) -> None:
         env_key = os.getenv("ACUCALYX_DEID_SECRET")
+        is_prod = os.environ.get("ACUCALYX_ENV") == "production"
+
+        if is_prod and (not env_key or env_key in _INSECURE_DEID_SECRETS):
+            raise RuntimeError(
+                "Production Security Violation (FDA Section 524B / HIPAA PS 3.15): "
+                "ACUCALYX_DEID_SECRET environment variable must be set to a unique secure random secret in production mode."
+            )
+
         if hmac_key:
             selected_key = hmac_key
         elif env_key:
             selected_key = env_key.encode("utf-8")
         else:
-            if os.environ.get("ACUCALYX_ENV") == "production":
-                raise RuntimeError(
-                    "Production Security Violation (FDA Section 524B / HIPAA PS 3.15): "
-                    "ACUCALYX_DEID_SECRET environment variable must be set in production mode."
-                )
             warnings.warn(
                 "PHIGuard: Using default canonical development secret. In clinical/production deployments, "
                 "set the ACUCALYX_DEID_SECRET environment variable to prevent deterministic pseudonym recovery.",
