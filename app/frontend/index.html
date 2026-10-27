@@ -693,8 +693,8 @@
           <button class="tab-btn" id="tab-kf-bullseye" style="flex: 1; padding: 4px 2px; font-size: 10px;" onclick="switchKeyframeTab('bullseye')">Bull's-Eye</button>
         </div>
         <div id="keyframe-img-wrapper" style="background: #0b0e14; border-radius: 6px; border: 1px solid var(--border-color); overflow: hidden; text-align: center; position: relative; min-height: 180px; display: flex; align-items: center; justify-content: center;">
-          <img id="keyframe-preview-img" src="" alt="CT Keyframe Preview" style="width: 100%; height: 180px; object-fit: contain; display: block; background: #0b0e14;" onerror="this.style.display='none'; document.getElementById('keyframe-pending-card').style.display='flex';" onload="this.style.display='block'; document.getElementById('keyframe-pending-card').style.display='none';">
-          <div id="keyframe-pending-card" style="display: none; flex-direction: column; align-items: center; justify-content: center; padding: 20px 14px; color: var(--text-secondary); width: 100%;">
+          <img id="keyframe-preview-img" src="" alt="CT Keyframe Preview" style="width: 100%; height: 180px; object-fit: contain; display: none; background: #0b0e14;" onerror="this.style.display='none'; document.getElementById('keyframe-pending-card').style.display='flex';" onload="this.style.display='block'; document.getElementById('keyframe-pending-card').style.display='none';">
+          <div id="keyframe-pending-card" style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px 14px; color: var(--text-secondary); width: 100%;">
             <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="var(--accent-cyan)" stroke-width="1.75" style="margin-bottom: 8px; opacity: 0.85;">
               <circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/>
             </svg>

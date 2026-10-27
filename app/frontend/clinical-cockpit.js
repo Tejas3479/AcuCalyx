@@ -614,6 +614,30 @@
         return group;
       }
 
+      const pivot = new THREE.Group();
+      scene.add(pivot);
+
+      function mountNephronModel(model) {
+        while (pivot.children.length > 0) {
+          pivot.remove(pivot.children[0]);
+        }
+        model.rotation.x = -Math.PI / 2;
+        model.updateMatrixWorld(true);
+
+        const box = new THREE.Box3().setFromObject(model);
+        const center = box.getCenter(new THREE.Vector3());
+        const size = box.getSize(new THREE.Vector3());
+
+        model.position.sub(center);
+        pivot.add(model);
+
+        const maxDim = Math.max(size.x, size.y, size.z) || 30;
+        camera.position.set(0, 4, maxDim * 1.75);
+        controls.target.set(0, 0, 0);
+        camera.lookAt(0, 0, 0);
+        controls.update();
+      }
+
       // Load mesh from server with fallback
       if (typeof THREE.GLTFLoader !== 'undefined') {
         const loader = new THREE.GLTFLoader();
@@ -621,59 +645,33 @@
         loader.load(
           url,
           (gltf) => {
-            nephronModel = gltf.scene;
-
-            // Preserve full vertex color saturation with pure white base
-            nephronModel.traverse((child) => {
+            const model = gltf.scene;
+            model.traverse((child) => {
               if (child.isMesh) {
                 child.material = new THREE.MeshStandardMaterial({
                   color: 0xffffff,
                   vertexColors: true,
-                  roughness: 0.3,
+                  roughness: 0.35,
                   metalness: 0.1,
                   side: THREE.DoubleSide
                 });
               }
             });
-
-            // Re-orient model: rotate X by -90 deg so cortex/glomerulus is UP (+Y), loop of Henle DOWN (-Y)
-            nephronModel.rotation.x = -Math.PI / 2;
-
-            // Center object
-            const box = new THREE.Box3().setFromObject(nephronModel);
-            const center = box.getCenter(new THREE.Vector3());
-            const size = box.getSize(new THREE.Vector3());
-            nephronModel.position.sub(center);
-
-            // Auto-frame camera based on bounding dimension
-            const maxDim = Math.max(size.x, size.y, size.z) || 30;
-            camera.position.set(0, 0, maxDim * 1.55);
-            controls.target.set(0, 0, 0);
-            camera.lookAt(0, 0, 0);
-            controls.update();
-
-            scene.add(nephronModel);
+            mountNephronModel(model);
           },
           undefined,
           (err) => {
             console.warn('Nephron GLB load fallback to procedural model:', err);
-            nephronModel = createProceduralNephron();
-            scene.add(nephronModel);
-            camera.position.set(0, 0, 46);
-            controls.target.set(0, 0, 0);
-            controls.update();
+            mountNephronModel(createProceduralNephron());
           }
         );
       } else {
-        nephronModel = createProceduralNephron();
-        scene.add(nephronModel);
+        mountNephronModel(createProceduralNephron());
       }
 
       function animate() {
         requestAnimationFrame(animate);
-        if (nephronModel) {
-          nephronModel.rotation.y += 0.006;
-        }
+        pivot.rotation.y += 0.006;
         controls.update();
         renderer.render(scene, camera);
       }
@@ -922,16 +920,30 @@
         capText = 'C-Arm Bull\'s-Eye Projection: coaxial down-the-barrel reticle with calibrated gantry presets.';
       }
 
-      img.onload = () => {
-        img.style.display = 'block';
-        if (pendingCard) pendingCard.style.display = 'none';
-      };
-      img.onerror = () => {
-        img.style.display = 'none';
-        if (pendingCard) pendingCard.style.display = 'flex';
-      };
+      // Hide image while loading to prevent broken image icon flash
+      img.style.display = 'none';
+      if (pendingCard) pendingCard.style.display = 'flex';
 
-      img.src = `/api/cases/${currentCaseId}/keyframes/${kfName}?t=${t}`;
+      fetch(`/api/cases/${currentCaseId}/keyframes/${kfName}?t=${t}`)
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.blob();
+        })
+        .then(blob => {
+          if (img._prevBlobUrl) {
+            URL.revokeObjectURL(img._prevBlobUrl);
+          }
+          const blobUrl = URL.createObjectURL(blob);
+          img._prevBlobUrl = blobUrl;
+          img.src = blobUrl;
+          img.style.display = 'block';
+          if (pendingCard) pendingCard.style.display = 'none';
+        })
+        .catch(() => {
+          img.style.display = 'none';
+          if (pendingCard) pendingCard.style.display = 'flex';
+        });
+
       if (caption) caption.textContent = capText;
 
       const activeBadge = document.getElementById('keyframe-active-cand-badge');
@@ -2712,6 +2724,19 @@
     window.downloadValidationReportJson = downloadValidationReportJson;
     window.toggleIngestDrawer = toggleIngestDrawer;
     window.submitCtuIngest = submitCtuIngest;
+
+    // Interactive Viewport, Navigation, & Subsystem Window Exports
+    window.switchKeyframeTab = switchKeyframeTab;
+    window.openKeyframeLightbox = openKeyframeLightbox;
+    window.openPdfModal = openPdfModal;
+    window.switchRehearsalTab = switchRehearsalTab;
+    window.submitPositionConfirmation = submitPositionConfirmation;
+    window.switchEndoTab = switchEndoTab;
+    window.loadEndoscopyData = loadEndoscopyData;
+    window.loadSelectedScenario = loadSelectedScenario;
+    window.updateUltrasoundViews = updateUltrasoundViews;
+    window.updatePoseTransformPreview = updatePoseTransformPreview;
+    window.onEndoSliderChange = onEndoSliderChange;
 
     // Core Workflow Exports for Multi-View Routing and Workstation Synchronization
     window.cockpitSelectCase = selectCase;

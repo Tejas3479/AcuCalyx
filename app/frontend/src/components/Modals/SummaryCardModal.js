@@ -68,6 +68,42 @@ export class SummaryCardModal {
       elSagittal.textContent = (typeof ang === 'number' ? ang.toFixed(1) : ang) + '°';
     }
 
+    // Populate stone burden profile and C-Arm projections
+    const stoneVol = document.getElementById('card-stone-volume');
+    if (stoneVol) stoneVol.textContent = document.getElementById('info-stone-vol')?.textContent || '-- mm³';
+    const stoneFeret = document.getElementById('card-stone-feret');
+    if (stoneFeret) stoneFeret.textContent = document.getElementById('info-stone-feret')?.textContent || '-- mm';
+    const stoneHu = document.getElementById('card-stone-hu');
+    if (stoneHu) stoneHu.textContent = document.getElementById('info-stone-hu')?.textContent || '-- HU';
+    const guysGrade = document.getElementById('card-guys-grade');
+    if (guysGrade) guysGrade.textContent = document.getElementById('info-guys-grade')?.textContent || 'GRADE I';
+
+    const carmBe = document.getElementById('card-carm-be');
+    if (carmBe) carmBe.textContent = document.getElementById('vp-be-angles')?.textContent || 'LAO 18.0° CAUD 12.0°';
+    const carmDv = document.getElementById('card-carm-dv');
+    if (carmDv) carmDv.textContent = document.getElementById('vp-dv-angles')?.textContent || 'RAO 12.0° CAUD 12.0°';
+
+    // Populate Keyframe Previews using authenticated fetch
+    const axialImg = document.getElementById('card-axial-img');
+    const coronalImg = document.getElementById('card-coronal-img');
+    const t = Date.now();
+    if (axialImg) {
+      fetch(`/api/cases/${caseId}/keyframes/axial_keyframe.png?t=${t}`)
+        .then(res => res.ok ? res.blob() : null)
+        .then(blob => {
+          if (blob) axialImg.src = URL.createObjectURL(blob);
+        })
+        .catch(() => {});
+    }
+    if (coronalImg) {
+      fetch(`/api/cases/${caseId}/keyframes/coronal_keyframe.png?t=${t}`)
+        .then(res => res.ok ? res.blob() : null)
+        .then(blob => {
+          if (blob) coronalImg.src = URL.createObjectURL(blob);
+        })
+        .catch(() => {});
+    }
+
     // Populate comparison table inside summary card
     const tbody = document.getElementById('card-comparison-tbody');
     if (tbody) {

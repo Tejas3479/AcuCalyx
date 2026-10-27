@@ -121,11 +121,30 @@ class AcuCalyxApplication {
     };
 
     window.createDemoCase = async () => {
-      await this.topbar.populateCaseList();
+      try {
+        const res = await caseService.createDemoCase();
+        showToast(`Synthetic demo phantom created: ${res.case_id}`, 'success');
+        await this.topbar.populateCaseList(res.case_id);
+        if (typeof window.selectCase === 'function') {
+          await window.selectCase(res.case_id);
+        }
+        if (this.views.dashboard) await this.views.dashboard.mount();
+        if (this.views.cases) await this.views.cases.mount();
+      } catch (err) {
+        showToast(`Demo creation failed: ${err.message}`, 'error');
+      }
     };
 
-    // 7. Load Initial Case List and Start Routing
+    // 7. Load Initial Case List, Auto-Select Active Case, and Start Routing
     await this.topbar.populateCaseList();
+    const initialCase = document.getElementById('case-select')?.value;
+    if (initialCase) {
+      try {
+        await window.selectCase(initialCase);
+      } catch (e) {
+        console.warn('Initial case selection deferred:', e);
+      }
+    }
     this.router.start();
 
     // Re-render when doctor identity changes

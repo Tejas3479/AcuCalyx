@@ -27,7 +27,7 @@ import secrets
 import threading
 import time
 from typing import Any, Dict, List, Optional, Set
-from fastapi import APIRouter, Depends, HTTPException, Header, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Header, Request, Response, status
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger("acucalyx.auth")
@@ -433,7 +433,7 @@ def get_current_doctor(
 # ---------------------------------------------------------------------------
 
 @router.post("/login", response_model=TokenResponse)
-def login_doctor(req: DoctorLoginRequest):
+def login_doctor(req: DoctorLoginRequest, response: Response):
     """Authenticates doctor credentials and issues signed session bearer token with rate-limit protection."""
     _check_rate_limit(req.username)
     doctors = _ensure_doctors_db()
@@ -457,6 +457,13 @@ def login_doctor(req: DoctorLoginRequest):
     doc_profile = Doctor(**matched_doc.model_dump(exclude={"salt_hex", "password_hash_hex"}))
 
     logger.info(f"Doctor login successful: {doc_profile.full_name} ({doc_profile.doctor_id})")
+    response.set_cookie(
+        key="acucalyx_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=TOKEN_EXPIRY_HOURS * 3600
+    )
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -466,7 +473,7 @@ def login_doctor(req: DoctorLoginRequest):
 
 
 @router.post("/register", response_model=TokenResponse)
-def register_doctor(req: DoctorRegisterRequest):
+def register_doctor(req: DoctorRegisterRequest, response: Response):
     """
     Registers a new doctor profile with strict role validation.
     Privileged roles (CHIEF_SURGEON, ADMIN) cannot be self-assigned.
@@ -517,6 +524,13 @@ def register_doctor(req: DoctorRegisterRequest):
     doc_profile = Doctor(**new_doc.model_dump(exclude={"salt_hex", "password_hash_hex"}))
 
     logger.info(f"Registered new physician: {doc_profile.full_name} ({doctor_id}) with role {assigned_role}")
+    response.set_cookie(
+        key="acucalyx_token",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        max_age=TOKEN_EXPIRY_HOURS * 3600
+    )
     return TokenResponse(
         access_token=token,
         token_type="bearer",
@@ -539,7 +553,7 @@ def list_department_doctors(current_doctor: Doctor = Depends(get_current_doctor)
 
 
 @router.post("/logout")
-def logout_doctor(request: Request, authorization: Optional[str] = Header(None)):
+def logout_doctor(request: Request, response: Response, authorization: Optional[str] = Header(None)):
     """Invalidates client credentials and registers token signature in revocation blacklist."""
     token = None
     if authorization and authorization.lower().startswith("bearer "):
@@ -549,5 +563,7 @@ def logout_doctor(request: Request, authorization: Optional[str] = Header(None))
 
     if token:
         revoke_token(token)
+        response.delete_cookie(key="acucalyx_token")
         return {"status": "success", "message": "Logged out successfully. Session token revoked."}
+    response.delete_cookie(key="acucalyx_token")
     return {"status": "success", "message": "Logged out successfully."}

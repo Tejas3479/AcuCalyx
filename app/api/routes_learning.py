@@ -47,9 +47,10 @@ def get_federated_learning_overview(
 
 @router.post("/train-local")
 def train_local_privacy_model(
-    req: LocalTrainingRequest,
+    req: Optional[LocalTrainingRequest] = None,
     current_doctor: Doctor = Depends(get_current_doctor)
 ) -> Dict[str, Any]:
+    req = req or LocalTrainingRequest()
     """
     Initiates a local, patient-isolated training epoch on the current doctor's approved cases.
     Computes local loss and gradients, clips L2 norm (C=1.0), adds calibrated Gaussian noise,
