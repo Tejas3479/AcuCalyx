@@ -3,12 +3,13 @@
  * Powered by Three.js & WebGL
  *
  * Implements:
- * - OrbitControls and smooth camera transitions
+ * - OrbitControls and smooth clinical camera transitions
  * - Photorealistic Anatomical PBR Shaders for Kidney Cortex, Capsule, Medulla Pyramids, Calyces, Arteries, Veins, Nerves, Nephrons, and Highlighted Calculus
- * - Proper renderOrder depth sorting for clean semi-translucent parenchymal viewing
- * - Pulsing radiant PointLight illuminating target stone and surrounding calyx
- * - PCNL Needle Trajectory selection via Raycasting
- * - Bull's-eye, Progression, and Close-up Stone camera view alignments
+ * - Real Directional Shadow Mapping (PCFSoftShadowMap) with calibrated surgical frustum
+ * - Hardware-accelerated multi-axis GPU clipping cutaway planes (coronal, axial, sagittal)
+ * - CSS2DRenderer integration for high-contrast anatomical landmark callouts
+ * - Clinical camera presets (AP 0°, Bullseye En-Face, Lateral Flank 90°, 30° Ipsilateral Oblique)
+ * - De-glow calculus: Natural calcified pale ivory shading with zero artificial emissive flare
  * - Dynamic opacity and layer visibility controls from sidebar
  */
 
@@ -19,12 +20,17 @@ class AcuCalyxViewer3D {
     this.camera = null;
     this.renderer = null;
     this.controls = null;
+    this.labelRenderer = null;
     this.meshes = {};
     this.trajectories = [];
     this.activeTrajectoryId = null;
+    this.activeTrajectoryVector = null;
     this.raycaster = new THREE.Raycaster();
     this.mouse = new THREE.Vector2();
-    this.stoneLight = null;
+    this.clippingPlanes = [];
+    this.coronalClip = null;
+    this.axialClip = null;
+    this.sagittalClip = null;
 
     this.init();
   }
@@ -40,13 +46,21 @@ class AcuCalyxViewer3D {
     // 2. Camera (Patient LPS Space: X: Right->Left, Y: Ant->Post, Z: Inf->Sup)
     // Centroid of the kidney is X=17.0, Y=14.0, Z=50.0 mm
     this.camera = new THREE.PerspectiveCamera(45, width / height, 1.0, 2000.0);
-    this.camera.position.set(17.0, -140.0, 50.0); // Coronal en-face cutaway view facing open anatomy
+    this.camera.position.set(17.0, -160.0, 50.0); // En-face coronal posterior view
     this.camera.up.set(0, 0, 1); // Cranial is +Z
 
     // 3. Renderer with alpha: true for seamless clinical studio blending
     this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     this.renderer.setSize(width, height);
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2.0));
+
+    // Enable hardware-accelerated local clipping planes
+    this.renderer.localClippingEnabled = true;
+
+    // Enable calibrated directional shadow maps
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     if (typeof THREE.SRGBColorSpace !== 'undefined') {
       this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     } else if (typeof THREE.sRGBEncoding !== 'undefined') {
@@ -56,7 +70,18 @@ class AcuCalyxViewer3D {
     this.renderer.toneMappingExposure = 1.1;
     this.container.appendChild(this.renderer.domElement);
 
-    // 4. Orbit Controls
+    // 4. CSS2D Label Renderer (if vendored)
+    if (typeof THREE.CSS2DRenderer !== 'undefined') {
+      this.labelRenderer = new THREE.CSS2DRenderer();
+      this.labelRenderer.setSize(width, height);
+      this.labelRenderer.domElement.style.position = 'absolute';
+      this.labelRenderer.domElement.style.top = '0';
+      this.labelRenderer.domElement.style.left = '0';
+      this.labelRenderer.domElement.style.pointerEvents = 'none';
+      this.container.appendChild(this.labelRenderer.domElement);
+    }
+
+    // 5. Orbit Controls
     if (typeof THREE.OrbitControls !== 'undefined') {
       this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
       this.controls.enableDamping = true;
@@ -65,28 +90,35 @@ class AcuCalyxViewer3D {
       this.controls.update();
     }
 
-    // 5. Lighting: Multi-point anatomical studio rig
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.85);
+    // 6. Lighting: Multi-point calibrated surgical studio rig
+    const ambientLight = new THREE.AmbientLight(0xf8fafc, 0.25);
     this.scene.add(ambientLight);
 
-    const dirLight1 = new THREE.DirectionalLight(0xffffff, 0.95);
-    dirLight1.position.set(80, 180, 120);
-    this.scene.add(dirLight1);
+    // Key Light with calibrated surgical shadow frustum (spanning organ bounds)
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.10);
+    keyLight.position.set(80, 160, 100);
+    keyLight.castShadow = true;
+    keyLight.shadow.camera.left = -80;
+    keyLight.shadow.camera.right = 80;
+    keyLight.shadow.camera.top = 80;
+    keyLight.shadow.camera.bottom = -80;
+    keyLight.shadow.camera.near = 10;
+    keyLight.shadow.camera.far = 400;
+    keyLight.shadow.mapSize.set(1024, 1024);
+    keyLight.shadow.bias = -0.0005;
+    this.scene.add(keyLight);
 
-    const dirLight2 = new THREE.DirectionalLight(0xffffff, 0.85);
-    dirLight2.position.set(-80, -140, 60);
-    this.scene.add(dirLight2);
+    // Fill Light: Soft cool anatomical balance
+    const fillLight = new THREE.DirectionalLight(0xe0f2fe, 0.40);
+    fillLight.position.set(-90, -60, 40);
+    this.scene.add(fillLight);
 
-    const dirLight3 = new THREE.DirectionalLight(0xffecd2, 0.50);
-    dirLight3.position.set(0, 150, -40);
-    this.scene.add(dirLight3);
+    // Rim Light: Golden surgical backlight defining posterior contours
+    const rimLight = new THREE.DirectionalLight(0xfef08a, 0.45);
+    rimLight.position.set(0, 120, -100);
+    this.scene.add(rimLight);
 
-    // 6. Dedicated Pulsing Stone PointLight (Radiant surgical highlight)
-    this.stoneLight = new THREE.PointLight(0xfbbf24, 1.6, 90.0);
-    this.stoneLight.position.set(21.5, 13.5, 37.5);
-    this.scene.add(this.stoneLight);
-
-    // 7. Subtle Studio Ground Reference Shadow (Replaces harsh wireframe grid)
+    // 7. Subtle Studio Ground Reference Shadow
     const shadowCanvas = document.createElement('canvas');
     shadowCanvas.width = 128;
     shadowCanvas.height = 128;
@@ -108,7 +140,12 @@ class AcuCalyxViewer3D {
     this.studioShadow.position.set(17.0, 14.0, -8.0);
     this.scene.add(this.studioShadow);
 
-    // 8. Event Listeners
+    // 8. Clipping Planes Initialization
+    this.coronalClip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 100);
+    this.axialClip = new THREE.Plane(new THREE.Vector3(0, 0, 1), 100);
+    this.sagittalClip = new THREE.Plane(new THREE.Vector3(1, 0, 0), 100);
+
+    // 9. Event Listeners
     if (typeof ResizeObserver !== 'undefined' && this.container) {
       this.resizeObserver = new ResizeObserver((entries) => {
         for (const entry of entries) {
@@ -127,94 +164,46 @@ class AcuCalyxViewer3D {
     this.animate();
   }
 
-  animate(time = 0) {
-    requestAnimationFrame((t) => this.animate(t));
+  animate() {
+    requestAnimationFrame(() => this.animate());
     if (this.controls) this.controls.update();
-
-    // Pulse stone radiant illumination
-    if (this.stoneLight) {
-      this.stoneLight.intensity = 0.80 + 0.35 * Math.sin(time * 0.003);
-    }
-
     this.renderer.render(this.scene, this.camera);
+    if (this.labelRenderer) {
+      this.labelRenderer.render(this.scene, this.camera);
+    }
   }
 
   onWindowResize() {
     const width = this.container.clientWidth;
     const height = this.container.clientHeight;
-    if (width <= 0 || height <= 0) return; // Prevent NaN aspect ratio corruption
+    if (width <= 0 || height <= 0) return;
 
     this.camera.aspect = width / height;
     this.camera.updateProjectionMatrix();
-    this.renderer.setSize(width, height, false);
-  }
-
-  recenterOnAnatomy() {
-    const box = new THREE.Box3();
-    let hasMesh = false;
-    for (const key in this.meshes) {
-      box.expandByObject(this.meshes[key]);
-      hasMesh = true;
+    this.renderer.setSize(width, height);
+    if (this.labelRenderer) {
+      this.labelRenderer.setSize(width, height);
     }
-    if (hasMesh && this.controls) {
-      const center = new THREE.Vector3();
-      box.getCenter(center);
-      this.controls.target.copy(center);
-      const size = new THREE.Vector3();
-      box.getSize(size);
-      const maxDim = Math.max(size.x, size.y, size.z, 80.0);
-      this.camera.position.set(center.x, center.y - maxDim * 2.2, center.z + maxDim * 0.5);
-      this.controls.update();
-    }
-  }
-
-  focusOnStone() {
-    if (!this.controls) return;
-    let stonePos = new THREE.Vector3(21.5, 13.5, 37.5);
-    if (this.meshes['stones']) {
-      const box = new THREE.Box3().setFromObject(this.meshes['stones']);
-      if (!box.isEmpty()) {
-        box.getCenter(stonePos);
-      }
-    }
-    this.camera.position.set(stonePos.x, stonePos.y - 70.0, stonePos.z + 15.0);
-    this.controls.target.copy(stonePos);
-    this.controls.update();
-  }
-
-  _disposeNode(node) {
-    if (!node) return;
-    if (node.geometry) {
-      node.geometry.dispose();
-    }
-    if (node.material) {
-      if (Array.isArray(node.material)) {
-        node.material.forEach((m) => this._disposeMaterial(m));
-      } else {
-        this._disposeMaterial(node.material);
-      }
-    }
-  }
-
-  _disposeMaterial(mat) {
-    if (!mat) return;
-    for (const key of Object.keys(mat)) {
-      const val = mat[key];
-      if (val && typeof val === 'object' && val.isTexture) {
-        val.dispose();
-      }
-    }
-    mat.dispose();
   }
 
   clearScene() {
-    for (const key in this.meshes) {
-      const obj = this.meshes[key];
-      obj.traverse((child) => this._disposeNode(child));
-      this.scene.remove(obj);
-    }
-    this.meshes = {};
+    Object.keys(this.meshes).forEach((key) => {
+      this.scene.remove(this.meshes[key]);
+      this._disposeNode(this.meshes[key]);
+      delete this.meshes[key];
+    });
     this.clearTrajectories();
+  }
+
+  _disposeNode(node) {
+    if (node.geometry) node.geometry.dispose();
+    if (node.material) {
+      if (Array.isArray(node.material)) {
+        node.material.forEach((mat) => mat.dispose());
+      } else {
+        node.material.dispose();
+      }
+    }
   }
 
   clearTrajectories() {
@@ -228,9 +217,8 @@ class AcuCalyxViewer3D {
   }
 
   /**
-   * Loads a GLB mesh from API endpoint with calibrated anatomical PBR materials
-   * and clean depth sorting (renderOrder) so internal structures are always visible
-   * through the translucent cortex without clipping or z-fighting.
+   * Loads a GLB mesh from API endpoint with calibrated anatomical PBR Physical Materials,
+   * proper renderOrder depth sorting, and active GPU clipping plane support.
    */
   async loadMesh(caseId, meshName, organKey, defaultOpacity = 0.5) {
     if (typeof THREE.GLTFLoader === 'undefined') {
@@ -249,227 +237,277 @@ class AcuCalyxViewer3D {
       const model = gltf.scene;
       model.traverse((child) => {
         if (child.isMesh) {
-          // Essential: compute vertex normals so WebGL PBR diffuse/specular lighting illuminates the geometry
           if (child.geometry) {
             child.geometry.computeVertexNormals();
           }
           child.castShadow = true;
           child.receiveShadow = true;
 
-          // Anatomical PBR Shaders per Substructure
+          // Anatomical Physical Materials per Substructure
           if (organKey === 'stones') {
-            // Highly differentiated crystalline calculus: bright calcified ivory with radiant amber-gold facet glow
+            // Natural calcified crystalline stone: pale ivory, high roughness, zero artificial emissive flare
             child.material = new THREE.MeshStandardMaterial({
-              color: 0xffffff,
-              roughness: 0.16,
-              metalness: 0.15,
-              emissive: 0xf59e0b,
-              emissiveIntensity: 0.95,
+              color: 0xfef3c7,
+              roughness: 0.85,
+              metalness: 0.02,
+              emissive: 0x000000,
+              emissiveIntensity: 0.0,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
-            child.renderOrder = 20; // Renders crystal-clear over surrounding calyx
+            child.renderOrder = 20; // Renders clearly in pelvis/calyx
           } else if (organKey === 'kidney') {
-            // Down-shadowed, semi-translucent renal cortex cutaway
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0xc47e85,
-              roughness: 0.65,
-              metalness: 0.04,
+            // Warm pinkish-tan renal parenchyma cortex with subtle wet tissue clearcoat
+            child.material = new THREE.MeshPhysicalMaterial({
+              color: 0xc87a74,
+              roughness: 0.42,
+              metalness: 0.02,
+              clearcoat: 0.25,
+              clearcoatRoughness: 0.30,
               transparent: true,
               opacity: defaultOpacity,
-              depthWrite: false, // Prevents occluding internal structures
+              depthWrite: false,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 10;
           } else if (organKey === 'renal_capsule') {
-            // Dark mahogany protective fibrous capsule
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0x6e241c,
-              roughness: 0.50,
-              metalness: 0.08,
+            // Fibrous renal capsule: deep mahogany with glossy outer protective sheath
+            child.material = new THREE.MeshPhysicalMaterial({
+              color: 0x7f1d1d,
+              roughness: 0.48,
+              metalness: 0.04,
+              clearcoat: 0.35,
+              clearcoatRoughness: 0.25,
               transparent: true,
               opacity: defaultOpacity,
               depthWrite: false,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 11;
           } else if (organKey === 'medulla_pyramids') {
-            // Striated medullary pyramids (crimson/maroon)
-            child.material = new THREE.MeshStandardMaterial({
+            // Striated medullary pyramids: rich crimson/maroon
+            child.material = new THREE.MeshPhysicalMaterial({
               color: 0x881337,
-              roughness: 0.55,
-              metalness: 0.05,
+              roughness: 0.52,
+              metalness: 0.02,
+              clearcoat: 0.15,
+              clearcoatRoughness: 0.40,
               transparent: true,
               opacity: defaultOpacity,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 2;
           } else if (organKey === 'collecting_system') {
-            // Warm mucosal opalescent cream / flesh calyces, pelvis, and ureter
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0xd6bc97,
-              roughness: 0.40,
-              metalness: 0.08,
+            // Opalescent mucosal calyces, pelvis, and ureter
+            child.material = new THREE.MeshPhysicalMaterial({
+              color: 0xe2d5c3,
+              roughness: 0.28,
+              metalness: 0.05,
+              clearcoat: 0.30,
+              clearcoatRoughness: 0.20,
               transparent: true,
               opacity: defaultOpacity,
-              depthWrite: false, // Allows stone to be viewed inside without clipping
+              depthWrite: false,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 3;
           } else if (organKey === 'renal_arteries') {
-            // Segmental, interlobar and arcuate arteries (bright scarlet red)
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0xef4444,
-              roughness: 0.30,
-              metalness: 0.15,
+            // Arterial tree: scarlet crimson red with high-specular clearcoat
+            child.material = new THREE.MeshPhysicalMaterial({
+              color: 0xdc2626,
+              roughness: 0.32,
+              metalness: 0.08,
+              clearcoat: 0.45,
+              clearcoatRoughness: 0.15,
               transparent: true,
               opacity: defaultOpacity,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 4;
           } else if (organKey === 'renal_veins') {
-            // Renal venous drainage (cobalt royal blue)
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0x2563eb,
-              roughness: 0.30,
-              metalness: 0.15,
+            // Venous drainage: royal deoxygenated blue
+            child.material = new THREE.MeshPhysicalMaterial({
+              color: 0x1d4ed8,
+              roughness: 0.34,
+              metalness: 0.08,
+              clearcoat: 0.40,
+              clearcoatRoughness: 0.20,
               transparent: true,
               opacity: defaultOpacity,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 4;
           } else if (organKey === 'renal_nerves') {
-            // Sympathetic and sensory autonomic nerve plexus (golden yellow)
+            // Sympathetic nerve plexus (golden filaments)
             child.material = new THREE.MeshStandardMaterial({
               color: 0xfacc15,
-              roughness: 0.25,
-              metalness: 0.10,
-              emissive: 0xca8a04,
-              emissiveIntensity: 0.45,
+              roughness: 0.45,
+              metalness: 0.05,
               transparent: true,
               opacity: defaultOpacity,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
             child.renderOrder = 4;
           } else if (organKey === 'nephrons' || organKey === 'nephron_unit') {
-            // Nephron micro-loops & tubules (amber)
             child.material = new THREE.MeshStandardMaterial({
               color: 0xf59e0b,
-              roughness: 0.30,
-              metalness: 0.10,
-              emissive: 0xd97706,
-              emissiveIntensity: 0.35,
+              roughness: 0.35,
+              metalness: 0.05,
               transparent: true,
               opacity: defaultOpacity,
+              clippingPlanes: this.clippingPlanes,
+              clipShadows: true,
               side: THREE.DoubleSide
             });
-            child.renderOrder = 4;
-          } else if (organKey === 'ribs') {
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0xf1f5f9,
-              roughness: 0.70,
-              transparent: true,
-              opacity: defaultOpacity,
-              side: THREE.DoubleSide
-            });
-            child.renderOrder = 1;
+            child.renderOrder = 5;
           } else if (organKey === 'colon') {
             child.material = new THREE.MeshStandardMaterial({
-              color: 0xf97316,
-              roughness: 0.60,
+              color: 0x854d0e,
+              roughness: 0.65,
+              metalness: 0.02,
               transparent: true,
-              opacity: defaultOpacity,
+              opacity: 0.28,
+              depthWrite: false,
               side: THREE.DoubleSide
             });
             child.renderOrder = 1;
-          } else {
-            child.material.transparent = defaultOpacity < 1.0;
-            child.material.opacity = defaultOpacity;
-            child.material.side = THREE.DoubleSide;
-            child.material.roughness = 0.4;
-            child.material.metalness = 0.1;
+          } else if (organKey === 'ribs') {
+            child.material = new THREE.MeshStandardMaterial({
+              color: 0xf3f4f6,
+              roughness: 0.45,
+              metalness: 0.08,
+              transparent: true,
+              opacity: 0.45,
+              depthWrite: false,
+              side: THREE.DoubleSide
+            });
+            child.renderOrder = 6;
           }
         }
       });
 
-      if (this.meshes[organKey]) {
-        this.scene.remove(this.meshes[organKey]);
-      }
       this.meshes[organKey] = model;
       this.scene.add(model);
-      console.log(`Loaded anatomical mesh: ${organKey}`);
-    } catch (err) {
-      console.warn(`Could not load mesh ${organKey} (${url}):`, err);
+    } catch (e) {
+      console.warn(`Mesh load failed for [${organKey}]: ${e.message}`);
     }
   }
 
-  /**
-   * Adds a candidate needle trajectory line with entry and target spheres
-   */
-  addTrajectory(candidate, isPreferred = false) {
+  addTrajectory(candidate, isActive = false) {
     const start = new THREE.Vector3(...candidate.entry_point_lps);
     const end = new THREE.Vector3(...candidate.target_point_lps);
 
-    const colorHex = isPreferred ? 0x00e5a3 : (candidate.safety_badge === 'REJECTED' ? 0xef4444 : 0xf59e0b);
+    if (isActive) {
+      this.activeTrajectoryId = candidate.candidate_id;
+      this.activeTrajectoryVector = new THREE.Vector3().subVectors(end, start).normalize();
+    }
 
-    const group = new THREE.Group();
-    group.userData = { candidateId: candidate.candidate_id };
+    const trajGroup = new THREE.Group();
+    trajGroup.name = `trajectory_${candidate.candidate_id}`;
 
-    // 1. Needle Line / Cylinder
+    // Color code based on clinical classification
+    let colorHex = 0x22c55e; // Green: Optimal
+    if (candidate.clinical_classification === 'SUBOPTIMAL') colorHex = 0xeab308; // Yellow
+    if (candidate.clinical_classification === 'REJECTED') colorHex = 0xef4444; // Red
+
     const dir = new THREE.Vector3().subVectors(end, start);
     const length = dir.length();
-    const cylGeo = new THREE.CylinderGeometry(0.9, 0.9, length, 16);
-    const cylMat = new THREE.MeshStandardMaterial({
+
+    // 1. Needle Shaft (18 Gauge PCNL Trocar)
+    const shaftRadius = isActive ? 1.0 : 0.6;
+    const shaftGeo = new THREE.CylinderGeometry(shaftRadius, shaftRadius, length, 16);
+    shaftGeo.translate(0, length / 2, 0);
+    shaftGeo.rotateX(Math.PI / 2);
+
+    const shaftMat = new THREE.MeshStandardMaterial({
       color: colorHex,
-      roughness: 0.3,
-      metalness: 0.8
+      roughness: 0.25,
+      metalness: 0.85,
+      emissive: isActive ? colorHex : 0x000000,
+      emissiveIntensity: isActive ? 0.35 : 0.0
     });
-    const cylinder = new THREE.Mesh(cylGeo, cylMat);
-    cylinder.renderOrder = 6;
+    const shaftMesh = new THREE.Mesh(shaftGeo, shaftMat);
+    shaftMesh.position.copy(start);
+    shaftMesh.lookAt(end);
+    trajGroup.add(shaftMesh);
 
-    cylinder.position.copy(new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5));
-    cylinder.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
-    group.add(cylinder);
+    // 2. Entry Bullseye Ring
+    const ringRadius = isActive ? 3.0 : 2.0;
+    const ringGeo = new THREE.TorusGeometry(ringRadius, 0.4, 8, 24);
+    const ringMat = new THREE.MeshBasicMaterial({ color: colorHex });
+    const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+    ringMesh.position.copy(start);
+    ringMesh.lookAt(end);
+    trajGroup.add(ringMesh);
 
-    // 2. Skin Entry Marker (Cyan ring)
-    const entryGeo = new THREE.SphereGeometry(2.0, 16, 16);
-    const entryMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8 });
-    const entryMesh = new THREE.Mesh(entryGeo, entryMat);
-    entryMesh.position.copy(start);
-    entryMesh.renderOrder = 6;
-    group.add(entryMesh);
+    // 3. Target Papilla Bevel Tip
+    const coneRadius = isActive ? 1.5 : 1.0;
+    const coneGeo = new THREE.ConeGeometry(coneRadius, 3.5, 16);
+    coneGeo.translate(0, -1.75, 0);
+    coneGeo.rotateX(-Math.PI / 2);
+    const coneMat = new THREE.MeshStandardMaterial({
+      color: colorHex,
+      metalness: 0.9,
+      roughness: 0.1
+    });
+    const coneMesh = new THREE.Mesh(coneGeo, coneMat);
+    coneMesh.position.copy(end);
+    coneMesh.lookAt(end.clone().add(dir));
+    trajGroup.add(coneMesh);
 
-    // 3. Calyx Papilla Target Marker (Target sphere)
-    const targetGeo = new THREE.SphereGeometry(2.2, 16, 16);
-    const targetMat = new THREE.MeshBasicMaterial({ color: 0xe11d48 });
-    const targetMesh = new THREE.Mesh(targetGeo, targetMat);
-    targetMesh.position.copy(end);
-    targetMesh.renderOrder = 6;
-    group.add(targetMesh);
+    trajGroup.userData = { candidateId: candidate.candidate_id, candidate: candidate };
 
-    this.scene.add(group);
+    this.scene.add(trajGroup);
     this.trajectories.push({
       candidateId: candidate.candidate_id,
-      object: group,
-      candidate: candidate
+      candidate: candidate,
+      object: trajGroup
     });
   }
 
   setActiveTrajectory(candidateId) {
     this.activeTrajectoryId = candidateId;
     this.trajectories.forEach((t) => {
-      const isActive = t.candidateId === candidateId;
+      const isAct = t.candidateId === candidateId;
+      if (isAct) {
+        const start = new THREE.Vector3(...t.candidate.entry_point_lps);
+        const end = new THREE.Vector3(...t.candidate.target_point_lps);
+        this.activeTrajectoryVector = new THREE.Vector3().subVectors(end, start).normalize();
+      }
       t.object.traverse((child) => {
         if (child.isMesh && child.material) {
-          if (isActive) {
-            child.scale.set(1.4, 1.0, 1.4);
-            if (child.material.emissive) child.material.emissive = new THREE.Color(0x00d2ff);
-          } else {
-            child.scale.set(1.0, 1.0, 1.0);
-            if (child.material.emissive) child.material.emissive = new THREE.Color(0x000000);
+          if (child.material.emissive) {
+            child.material.emissiveIntensity = isAct ? 0.35 : 0.0;
           }
         }
       });
     });
+  }
+
+  focusOnStone() {
+    if (this.meshes['stones'] && this.controls) {
+      const stoneMesh = this.meshes['stones'];
+      const box = new THREE.Box3().setFromObject(stoneMesh);
+      const center = box.getCenter(new THREE.Vector3());
+      this.controls.target.copy(center);
+      this.camera.position.set(center.x, center.y - 75.0, center.z + 20.0);
+      this.controls.update();
+    }
   }
 
   onPointerDown(event) {
@@ -478,45 +516,56 @@ class AcuCalyxViewer3D {
     this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 
     this.raycaster.setFromCamera(this.mouse, this.camera);
-    const clickableTrajectories = this.trajectories.map((t) => t.object);
-    const trajIntersects = this.raycaster.intersectObjects(clickableTrajectories, true);
+    const trajObjects = this.trajectories.map((t) => t.object);
+    const intersects = this.raycaster.intersectObjects(trajObjects, true);
 
-    if (trajIntersects.length > 0) {
-      let topObj = trajIntersects[0].object;
+    if (intersects.length > 0) {
+      let topObj = intersects[0].object;
       while (topObj.parent && !topObj.userData.candidateId) {
         topObj = topObj.parent;
       }
       if (topObj.userData.candidateId) {
-        const id = topObj.userData.candidateId;
-        window.dispatchEvent(new CustomEvent('acucalyx:trajectory-selected', { detail: { candidateId: id } }));
+        const candId = topObj.userData.candidateId;
+        this.setActiveTrajectory(candId);
+        window.dispatchEvent(new CustomEvent('trajectorySelected', { detail: { candidateId: candId } }));
       }
-    }
-
-    // Milestone M11: Bidirectional 3D <-> 2D Physical LPS Coordinate Synchronization
-    const allTargetObjects = Object.values(this.meshes).concat(clickableTrajectories);
-    const allIntersects = this.raycaster.intersectObjects(allTargetObjects, true);
-    if (allIntersects.length > 0) {
-      const hit = allIntersects[0];
-      const pt = hit.point;
-      if (window.mprViewer && typeof window.mprViewer.syncToLPS === 'function') {
-        window.mprViewer.syncToLPS(pt.x, pt.y, pt.z);
+    } else {
+      const allMeshes = Object.values(this.meshes);
+      const organHits = this.raycaster.intersectObjects(allMeshes, true);
+      if (organHits.length > 0) {
+        const pt = organHits[0].point;
+        if (window.mprViewer && typeof window.mprViewer.syncToLPS === 'function') {
+          window.mprViewer.syncToLPS(pt.x, pt.y, pt.z);
+        }
       }
     }
   }
 
-  setCameraView(viewPreset) {
-    if (!this.controls) return;
+  /**
+   * Sets clinical camera preset with standard urological/radiological alignment.
+   */
+  setClinicalView(preset) {
+    if (!this.controls || !this.camera) return;
+    const target = new THREE.Vector3(17.0, 14.0, 50.0);
+    this.controls.target.copy(target);
 
-    switch (viewPreset) {
+    switch (preset) {
+      case 'ap':
       case 'posterior':
-        this.camera.position.set(17.0, -140.0, 50.0);
-        this.controls.target.set(17.0, 14.0, 50.0);
+        // Anteroposterior 0° direct posterior surgical view
+        this.camera.position.set(17.0, -160.0, 50.0);
         break;
+      case 'flank':
       case 'lateral':
-        this.camera.position.set(140.0, 14.0, 50.0);
-        this.controls.target.set(17.0, 14.0, 50.0);
+        // Lateral Flank 90° profile
+        this.camera.position.set(190.0, 14.0, 50.0);
+        break;
+      case 'oblique':
+        // 30° Ipsilateral Oblique fluoroscopic working angle
+        this.camera.position.set(110.0, -130.0, 50.0);
         break;
       case 'bullseye':
+        // Aligned along active trajectory trocar vector
         if (this.activeTrajectoryId) {
           const t = this.trajectories.find((x) => x.candidateId === this.activeTrajectoryId);
           if (t) {
@@ -526,27 +575,65 @@ class AcuCalyxViewer3D {
             this.camera.position.copy(start.clone().sub(dir.clone().multiplyScalar(100)));
             this.controls.target.copy(end);
           }
-        }
-        break;
-      case 'progression':
-        if (this.activeTrajectoryId) {
-          const t = this.trajectories.find((x) => x.candidateId === this.activeTrajectoryId);
-          if (t) {
-            const start = new THREE.Vector3(...t.candidate.entry_point_lps);
-            const end = new THREE.Vector3(...t.candidate.target_point_lps);
-            const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5);
-            const dir = new THREE.Vector3().subVectors(end, start).normalize();
-            const ortho = new THREE.Vector3(-dir.y, dir.x, 0).normalize();
-            this.camera.position.copy(mid.clone().add(ortho.clone().multiplyScalar(120)));
-            this.controls.target.copy(mid);
-          }
+        } else {
+          this.camera.position.set(17.0, -160.0, 50.0);
         }
         break;
       case 'stone':
         this.focusOnStone();
         break;
+      default:
+        this.camera.position.set(17.0, -160.0, 50.0);
+        break;
     }
+    this.camera.lookAt(this.controls.target);
     this.controls.update();
+  }
+
+  setCameraView(viewPreset) {
+    this.setClinicalView(viewPreset);
+  }
+
+  /**
+   * Hardware-accelerated GPU clipping cutaway plane control.
+   * axis: 'coronal' | 'axial' | 'sagittal'
+   * offsetMm: distance in physical mm
+   * enabled: boolean
+   */
+  setCutaway(axis, offsetMm, enabled) {
+    if (!this.clippingPlanes) this.clippingPlanes = [];
+
+    let targetPlane = null;
+    if (axis === 'coronal') {
+      this.coronalClip.constant = offsetMm !== undefined ? offsetMm : 14.0;
+      targetPlane = this.coronalClip;
+    } else if (axis === 'axial') {
+      this.axialClip.constant = offsetMm !== undefined ? offsetMm : 50.0;
+      targetPlane = this.axialClip;
+    } else if (axis === 'sagittal') {
+      this.sagittalClip.constant = offsetMm !== undefined ? offsetMm : 17.0;
+      targetPlane = this.sagittalClip;
+    }
+
+    if (targetPlane) {
+      const idx = this.clippingPlanes.indexOf(targetPlane);
+      if (enabled && idx === -1) {
+        this.clippingPlanes.push(targetPlane);
+      } else if (!enabled && idx !== -1) {
+        this.clippingPlanes.splice(idx, 1);
+      }
+    }
+
+    // Update clippingPlanes across all active mesh materials
+    Object.values(this.meshes).forEach((obj) => {
+      obj.traverse((child) => {
+        if (child.isMesh && child.material) {
+          child.material.clippingPlanes = this.clippingPlanes;
+          child.material.clipShadows = true;
+          child.material.needsUpdate = true;
+        }
+      });
+    });
   }
 
   setLayerVisibility(organKey, visible) {
@@ -578,7 +665,7 @@ class AcuCalyxViewer3D {
         this.studioShadow.material.opacity = 0.25;
       }
     } else { // hybrid (default)
-      this.scene.background = null; // Let CSS radial gradient shine through
+      this.scene.background = null;
       if (this.studioShadow) {
         this.studioShadow.visible = true;
         this.studioShadow.material.opacity = 0.35;
@@ -587,8 +674,9 @@ class AcuCalyxViewer3D {
   }
 }
 
-window.AcuCalyxViewer3D = AcuCalyxViewer3D;
-
+// Assign to global window for non-module scripts
+if (typeof window !== 'undefined') {
+  window.AcuCalyxViewer3D = AcuCalyxViewer3D;
+}
 
 export { AcuCalyxViewer3D };
-window.AcuCalyxViewer3D = AcuCalyxViewer3D;

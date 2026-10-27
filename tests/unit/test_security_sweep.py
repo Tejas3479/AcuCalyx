@@ -184,15 +184,20 @@ def test_non_demo_case_mesh_template_leakage_protection():
     mesh_file = CASES_DIR / case_id / "artifacts" / "meshes" / "kidney.glb"
     mesh_file.unlink(missing_ok=True)
 
-    # Request without allow_template flag -> 404
+    # Non-demo patient case strictly returns 404 - no client flag can override it
     res_mesh = client.get(f"/api/cases/{case_id}/meshes/kidney")
     assert res_mesh.status_code == 404
     assert "Planning pipeline must be run" in res_mesh.json()["detail"]
 
-    # Request with explicit allow_template=true flag -> 200 with Synthetic-Template header
     res_fallback = client.get(f"/api/cases/{case_id}/meshes/kidney?allow_template=true")
-    assert res_fallback.status_code == 200
-    assert res_fallback.headers.get("X-AcuCalyx-Synthetic-Template") == "true"
+    assert res_fallback.status_code == 404
+
+    # Demo case fallback strictly allowed with synthetic disclosure header
+    meta["is_demo"] = True
+    save_case_meta(case_id, meta)
+    res_demo = client.get(f"/api/cases/{case_id}/meshes/kidney")
+    assert res_demo.status_code == 200
+    assert res_demo.headers.get("X-AcuCalyx-Synthetic-Template") == "true"
 
 
 def test_readiness_probe():

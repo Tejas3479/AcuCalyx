@@ -1088,8 +1088,7 @@ def get_candidate_comparison_matrix(case_id: str):
 def get_case_mesh(
     case_id: str,
     mesh_name: str,
-    meta: Dict[str, Any] = Depends(verify_case_access),
-    allow_template: bool = Query(default=False, description="Allow falling back to reference template mesh")
+    meta: Dict[str, Any] = Depends(verify_case_access)
 ):
     """Streams binary GLB 3D surface meshes for Three.js WebGL visualization."""
     case_dir = get_case_dir(case_id)
@@ -1100,7 +1099,7 @@ def get_case_mesh(
     if not mesh_path.is_file():
         is_demo = meta.get("is_demo", False)
         preview_mesh = BASE_DIR / "data" / "anatomical_preview" / clean_name
-        if (is_demo or allow_template) and preview_mesh.is_file():
+        if is_demo and preview_mesh.is_file():
             mesh_path = preview_mesh
             is_synthetic_template = True
         else:

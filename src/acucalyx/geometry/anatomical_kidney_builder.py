@@ -111,12 +111,13 @@ class AnatomicalKidneyBuilder:
 
     def build_renal_capsule(self) -> trimesh.Trimesh:
         """
-        Builds the smooth, dark mahogany fibrous renal capsule wrapping the convex posterior surface.
+        Builds the smooth, dark mahogany fibrous renal capsule as a continuous outer hull
+        with an open hilum portal for the renal pedicle vessels.
         """
-        res = 1.2
-        x_range = np.arange(self.center[0] - 25.0, self.center[0] + 30.0, res)
-        y_range = np.arange(self.center[1] - 22.0, self.center[1] + 25.0, res)
-        z_range = np.arange(self.center[2] - 52.0, self.center[2] + 52.0, res)
+        res = 1.0
+        x_range = np.arange(self.center[0] - 28.0, self.center[0] + 32.0, res)
+        y_range = np.arange(self.center[1] - 24.0, self.center[1] + 28.0, res)
+        z_range = np.arange(self.center[2] - 54.0, self.center[2] + 54.0, res)
 
         X, Y, Z = np.meshgrid(x_range, y_range, z_range, indexing='ij')
         dx = X - self.center[0]
@@ -127,11 +128,13 @@ class AnatomicalKidneyBuilder:
         hilum_factor = hilum_depth * np.exp(-((dz / 16.0) ** 2 + (dy / 10.0) ** 2))
         dx_adj = np.where(dx < 0, dx + hilum_factor, dx)
 
-        dist_outer = (dx_adj / (self.rx + 0.8)) ** 2 + (dy / (self.ry + 0.8)) ** 2 + (dz / (self.rz + 0.8)) ** 2
+        dist_outer = (dx_adj / (self.rx + 1.2)) ** 2 + (dy / (self.ry + 1.2)) ** 2 + (dz / (self.rz + 1.2)) ** 2
         dist_inner = (dx_adj / self.rx) ** 2 + (dy / self.ry) ** 2 + (dz / self.rz) ** 2
 
-        # Outer thin capsule shell on the posterior side (dy >= 0.0)
-        capsule_mask = (dist_outer <= 1.0) & (dist_inner >= 0.95) & (dy >= 0.0)
+        # Hilum portal opening where vascular pedicle and ureter exit
+        hilum_aperture = (dx < -4.0) & (((dz / 16.0) ** 2 + (dy / 11.0) ** 2) <= 1.0)
+
+        capsule_mask = (dist_outer <= 1.0) & (dist_inner >= 0.88) & ~hilum_aperture
 
         verts, faces, normals, _ = marching_cubes(capsule_mask, level=0.5, spacing=(res, res, res))
         phys_verts = np.zeros_like(verts)
@@ -139,9 +142,18 @@ class AnatomicalKidneyBuilder:
         phys_verts[:, 1] = y_range[0] + verts[:, 1]
         phys_verts[:, 2] = z_range[0] + verts[:, 2]
 
-        mesh = trimesh.Trimesh(vertices=phys_verts, faces=faces, vertex_normals=normals, process=True)
+        # Correct clockwise winding to standard counter-clockwise outward normals
+        faces_ccw = faces[:, ::-1] if len(faces) > 0 else faces
+        normals_outward = -normals if len(normals) > 0 else normals
+        mesh = trimesh.Trimesh(vertices=phys_verts, faces=faces_ccw, vertex_normals=normals_outward, process=True)
+        mesh.fix_normals()
         if len(mesh.faces) > 0:
             trimesh.smoothing.filter_laplacian(mesh, iterations=3)
+
+        # Retain primary continuous anatomical hull and filter any micro-debris < 5 mm3
+        parts = trimesh.graph.split(mesh)
+        if len(parts) > 1:
+            mesh = max(parts, key=lambda p: len(p.faces))
 
         # Color: Dark reddish-brown fibrous capsule
         color = [115, 35, 25, 220]  # RGBA
@@ -184,7 +196,10 @@ class AnatomicalKidneyBuilder:
         phys_verts[:, 1] = y_range[0] + verts[:, 1]
         phys_verts[:, 2] = z_range[0] + verts[:, 2]
 
-        mesh = trimesh.Trimesh(vertices=phys_verts, faces=faces, vertex_normals=normals, process=True)
+        faces_ccw = faces[:, ::-1] if len(faces) > 0 else faces
+        normals_outward = -normals if len(normals) > 0 else normals
+        mesh = trimesh.Trimesh(vertices=phys_verts, faces=faces_ccw, vertex_normals=normals_outward, process=True)
+        mesh.fix_normals()
         if len(mesh.faces) > 0:
             trimesh.smoothing.filter_laplacian(mesh, iterations=4)
             try:
@@ -279,31 +294,27 @@ class AnatomicalKidneyBuilder:
         hilum_artery = self.center + np.array([-5.5, 1.0, 3.0])
 
         branches = [
-            # Main renal artery (oxygenated blood)
-            (aorta_origin, hilum_artery, 3.6, 3.0),
-            # Segmental arteries
-            # Posterior segmental artery
-            (hilum_artery, self.center + np.array([1.0, 5.0, 4.0]), 2.4, 1.9),
-            # Apical segmental artery
-            (hilum_artery, self.center + np.array([0.0, 2.0, 17.0]), 2.5, 1.9),
-            # Middle segmental artery
-            (hilum_artery, self.center + np.array([2.0, 1.0, 1.0]), 2.4, 1.8),
-            # Lower segmental artery
-            (hilum_artery, self.center + np.array([1.0, 2.0, -15.0]), 2.5, 1.9),
+            # Main renal artery (calibrated normal adult diameter 5.2mm)
+            (aorta_origin, hilum_artery, 2.7, 2.4),
+            # Segmental arteries (calibrated diameter 3.6-4.0mm)
+            (hilum_artery, self.center + np.array([1.0, 5.0, 4.0]), 2.0, 1.6),
+            (hilum_artery, self.center + np.array([0.0, 2.0, 17.0]), 2.0, 1.6),
+            (hilum_artery, self.center + np.array([2.0, 1.0, 1.0]), 2.0, 1.6),
+            (hilum_artery, self.center + np.array([1.0, 2.0, -15.0]), 2.0, 1.6),
 
-            # Interlobar arteries (running between pyramids in Bertin's columns)
-            (self.center + np.array([0.0, 2.0, 17.0]), self.center + np.array([7.0, 3.0, 27.0]), 1.7, 1.2),
-            (self.center + np.array([0.0, 2.0, 17.0]), self.center + np.array([4.0, 1.0, 23.0]), 1.6, 1.1),
-            (self.center + np.array([2.0, 1.0, 1.0]), self.center + np.array([11.0, 2.0, 7.0]), 1.6, 1.1),
-            (self.center + np.array([2.0, 1.0, 1.0]), self.center + np.array([11.0, 2.0, -6.0]), 1.6, 1.1),
-            (self.center + np.array([1.0, 2.0, -15.0]), self.center + np.array([6.0, 2.0, -19.0]), 1.6, 1.1),
-            (self.center + np.array([1.0, 2.0, -15.0]), self.center + np.array([5.0, 3.0, -26.0]), 1.5, 1.0),
+            # Interlobar arteries (running between pyramids in Bertin's columns, diameter 2.2-2.6mm)
+            (self.center + np.array([0.0, 2.0, 17.0]), self.center + np.array([7.0, 3.0, 27.0]), 1.3, 1.0),
+            (self.center + np.array([0.0, 2.0, 17.0]), self.center + np.array([4.0, 1.0, 23.0]), 1.3, 1.0),
+            (self.center + np.array([2.0, 1.0, 1.0]), self.center + np.array([11.0, 2.0, 7.0]), 1.3, 1.0),
+            (self.center + np.array([2.0, 1.0, 1.0]), self.center + np.array([11.0, 2.0, -6.0]), 1.3, 1.0),
+            (self.center + np.array([1.0, 2.0, -15.0]), self.center + np.array([6.0, 2.0, -19.0]), 1.3, 1.0),
+            (self.center + np.array([1.0, 2.0, -15.0]), self.center + np.array([5.0, 3.0, -26.0]), 1.2, 1.0),
 
-            # Arcuate arches running along pyramid bases at the corticomedullary junction
-            (self.center + np.array([7.0, 3.0, 27.0]), self.center + np.array([14.0, 4.0, 32.0]), 1.2, 0.7),
-            (self.center + np.array([11.0, 2.0, 7.0]), self.center + np.array([16.0, 3.0, 9.0]), 1.2, 0.7),
-            (self.center + np.array([11.0, 2.0, -6.0]), self.center + np.array([16.0, 3.0, -8.0]), 1.2, 0.7),
-            (self.center + np.array([6.0, 2.0, -19.0]), self.center + np.array([12.0, 3.0, -23.0]), 1.1, 0.7),
+            # Arcuate arches running along pyramid bases (diameter 1.4-1.8mm)
+            (self.center + np.array([7.0, 3.0, 27.0]), self.center + np.array([14.0, 4.0, 32.0]), 0.9, 0.7),
+            (self.center + np.array([11.0, 2.0, 7.0]), self.center + np.array([16.0, 3.0, 9.0]), 0.9, 0.7),
+            (self.center + np.array([11.0, 2.0, -6.0]), self.center + np.array([16.0, 3.0, -8.0]), 0.9, 0.7),
+            (self.center + np.array([6.0, 2.0, -19.0]), self.center + np.array([12.0, 3.0, -23.0]), 0.9, 0.7),
         ]
 
         artery_mesh = _create_branching_tree(branches)
@@ -471,14 +482,19 @@ class AnatomicalKidneyBuilder:
         sphere = trimesh.creation.icosphere(subdivisions=4, radius=6.2)
         np.random.seed(42)
 
-        # Organic crystalline displacement
-        v = sphere.vertices
-        # Macro lobules
+        # Coherent 3D multi-frequency harmonics for authentic mineral crystalline facets
+        v = sphere.vertices.copy()
         r = np.linalg.norm(v, axis=1, keepdims=True)
-        lobules = 0.8 * np.sin(3.0 * v[:, 0:1]) * np.cos(3.0 * v[:, 2:3])
-        # Sharp micro crystal facets
-        facets = np.random.normal(0.0, 0.45, size=v.shape)
-        sphere.vertices += (v / (r + 1e-6)) * lobules + facets
+        unit_v = v / (r + 1e-6)
+
+        # Primary lobules (macro morphology)
+        macro = 0.70 * np.sin(2.5 * unit_v[:, 0:1]) * np.cos(2.5 * unit_v[:, 2:3])
+        # Secondary crystalline facets (planar cleavage geometry)
+        facets = 0.30 * np.cos(5.0 * unit_v[:, 0:1] + 3.0 * unit_v[:, 1:2]) * np.sin(4.0 * unit_v[:, 2:3])
+        # Fine mineral texture
+        micro = 0.12 * np.sin(8.0 * unit_v[:, 0:1]) * np.cos(8.0 * unit_v[:, 1:2])
+
+        sphere.vertices += unit_v * (macro + facets + micro)
 
         # Anisotropic stone elongation
         sphere.vertices[:, 0] *= 1.15

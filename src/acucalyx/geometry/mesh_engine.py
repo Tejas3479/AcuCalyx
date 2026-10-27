@@ -83,13 +83,16 @@ def mask_to_surface_mesh(
     ijk = verts / spacing  # back to continuous (i, j, k)
     phys_vertices = spatial_orientation.voxel_to_physical(ijk)
 
-    # Step 3: Construct Trimesh object
+    # Step 3: Rectify face winding from clockwise to standard counter-clockwise outward normals
+    faces_ccw = faces[:, ::-1] if len(faces) > 0 else faces
+    normals_outward = -normals if len(normals) > 0 else normals
     mesh = trimesh.Trimesh(
         vertices=phys_vertices,
-        faces=faces,
-        vertex_normals=normals,
+        faces=faces_ccw,
+        vertex_normals=normals_outward,
         process=True
     )
+    mesh.fix_normals()
 
     # Step 4: Volume-preserving Laplacian smoothing (for visual presentation)
     if smoothing_iterations > 0 and len(mesh.faces) > 0:
