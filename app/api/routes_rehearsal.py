@@ -12,7 +12,7 @@ Provides REST endpoints for:
 import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 import numpy as np
 
@@ -35,7 +35,7 @@ from acucalyx.validation.procedural_evaluator import (
     TargetFornicealZone,
     compute_exact_clopper_pearson_upper_bound,
 )
-from app.api.case_store import get_case_dir, validate_case_id, resolve_case_input_path
+from app.api.case_store import get_case_dir, validate_case_id, resolve_case_input_path, verify_case_access
 
 router = APIRouter(prefix="/api", tags=["rehearsal_and_phantom"])
 
@@ -159,7 +159,8 @@ def get_carm_transfer_card(
     case_id: str,
     candidate_id: Optional[str] = Query(None, description="Specific candidate ID"),
     carm_model: str = Query("philips_zenition_70", description="C-arm hardware profile key"),
-    oblique_angle_deg: float = Query(30.0, description="Depth-verification oblique angle")
+    oblique_angle_deg: float = Query(30.0, description="Depth-verification oblique angle"),
+    case_access: Dict[str, Any] = Depends(verify_case_access)
 ):
     """Generates standardized C-arm gantry angle presets and ALARA instructions for the technician."""
     profile = get_carm_profile(carm_model)
@@ -181,7 +182,8 @@ def get_rehearsal_state(
     case_id: str,
     candidate_id: Optional[str] = Query(None, description="Specific candidate ID"),
     advancement: float = Query(0.0, ge=0.0, le=1.0, description="Needle advancement fraction 0.0 to 1.0"),
-    carm_model: str = Query("philips_zenition_70", description="C-arm hardware profile key")
+    carm_model: str = Query("philips_zenition_70", description="C-arm hardware profile key"),
+    case_access: Dict[str, Any] = Depends(verify_case_access)
 ):
     """Computes synchronized 4-view rehearsal state at given needle advancement fraction."""
     profile = get_carm_profile(carm_model)

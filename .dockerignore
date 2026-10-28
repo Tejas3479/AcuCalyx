@@ -35,6 +35,7 @@ scratch/
 *.log
 *.tmp*
 *.png
+!data/anatomical_preview/keyframes/*.png
 .vscode
 .idea
 node_modules/

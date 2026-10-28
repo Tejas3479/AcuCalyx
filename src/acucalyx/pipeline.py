@@ -186,10 +186,20 @@ def segment_heuristic_anatomy(
     Y_phys = A[1, 0]*i_idx + A[1, 1]*j_idx + A[1, 2]*k_idx + A[1, 3]
     Z_phys = A[2, 0]*i_idx + A[2, 1]*j_idx + A[2, 2]*k_idx + A[2, 3]
 
+    # Expected retroperitoneal renal fossa location
+    expected_kc = known_kidney_center if known_kidney_center is not None else np.array([
+        20.0 if target_side.lower() == "left" else -20.0,
+        10.0,
+        (slices * dz) / 2.0
+    ])
+
     # 1. Ribs & Bone (> 250 HU)
     bone_mask = volume_hu > 250.0
-    # Ribs are lateral (|X| > 15 mm) and dorsal / lateral
-    rib_mask = bone_mask & (np.abs(X_phys) > 15.0)
+    # Exclude internal renal compartment so dense calculi (HU 500-1500) are not marked as ribs
+    in_renal_compartment = (np.abs(X_phys - expected_kc[0]) < 25.0) & \
+                           (Y_phys < 25.0) & \
+                           (np.abs(Z_phys - expected_kc[2]) < 45.0)
+    rib_mask = bone_mask & (np.abs(X_phys) > 15.0) & (~in_renal_compartment)
     spine_mask = bone_mask & (np.abs(X_phys) <= 15.0)
 
     # Subdivide ribs into 11th and 12th based on craniocaudal level (Z)
@@ -226,12 +236,29 @@ def segment_heuristic_anatomy(
         )
         kidney_mask = kidney_hu_candidate & (dist_to_center <= 55.0)
     else:
-        # Largest connected component in retroperitoneal side quadrant
+        # Expected retroperitoneal renal fossa location:
+        expected_kc = np.array([20.0 if target_side.lower() == "left" else -20.0, 10.0, (slices * dz) / 2.0])
         labeled, num_features = ndimage.label(kidney_hu_candidate)
         if num_features > 0:
-            sizes = ndimage.sum(kidney_hu_candidate, labeled, range(1, num_features + 1))
-            largest_idx = np.argmax(sizes) + 1
-            kidney_mask = labeled == largest_idx
+            best_idx = 1
+            best_score = float("inf")
+            for f_idx in range(1, num_features + 1):
+                comp = labeled == f_idx
+                sz = np.sum(comp)
+                if sz < 100:  # ignore micro specks
+                    continue
+                c_coords = np.argwhere(comp)
+                mean_pos = np.array([
+                    origin[0] + np.mean(c_coords[:, 1]) * dx,
+                    origin[1] + np.mean(c_coords[:, 0]) * dy,
+                    origin[2] + np.mean(c_coords[:, 2]) * dz
+                ])
+                # Proximity to retroperitoneal renal fossa
+                dist = np.linalg.norm(mean_pos - expected_kc)
+                if dist < best_score:
+                    best_score = dist
+                    best_idx = f_idx
+            kidney_mask = labeled == best_idx
         else:
             kidney_mask = np.zeros_like(volume_hu, dtype=bool)
 
@@ -247,7 +274,15 @@ def segment_heuristic_anatomy(
         masks.set_mask(OrganLabel.KIDNEY_RIGHT, kidney_mask)
 
     # 3. Colon Hazard (Retrorenal / lateral colon: air lumen -1000 to -500 HU, soft tissue wall)
-    colon_air = (volume_hu < -400.0) & side_filter & (Y_phys > -30.0)
+    # Extract patient body trunk envelope to avoid capturing ambient room air (-1000 HU)
+    tissue_closed = ndimage.binary_closing(volume_hu > -250.0, structure=ndimage.generate_binary_structure(3, 1), iterations=3)
+    body_trunk = np.zeros_like(volume_hu, dtype=bool)
+    struct_2d = ndimage.generate_binary_structure(2, 1)
+    for k_sl in range(volume_hu.shape[2]):
+        if np.any(tissue_closed[:, :, k_sl]):
+            body_trunk[:, :, k_sl] = ndimage.binary_fill_holes(tissue_closed[:, :, k_sl], structure=struct_2d)
+
+    colon_air = (volume_hu < -400.0) & body_trunk & side_filter & (Y_phys > -30.0)
     # Exclude cranial lung slices
     if np.any(kidney_mask):
         k_max_z = np.max(Z_phys[kidney_mask])
@@ -257,7 +292,7 @@ def segment_heuristic_anatomy(
         struct = ndimage.generate_binary_structure(3, 1)
         # Dilate air lumen by 3-4mm to include colon muscularis wall
         dilate_voxels = max(1, int(round(3.5 / np.mean([dx, dy, dz]))))
-        colon_mask = ndimage.binary_dilation(colon_air, structure=struct, iterations=dilate_voxels)
+        colon_mask = ndimage.binary_dilation(colon_air, structure=struct, iterations=dilate_voxels) & body_trunk
     else:
         colon_mask = np.zeros_like(volume_hu, dtype=bool)
 
@@ -706,10 +741,10 @@ def run_planning_pipeline(
         top_candidates = []
     else:
         plan_exec_status = "SUCCESS"
-        # Sort surviving Pareto candidates: subcostal preferred, maximum clearance, shorter tract length
+        # Sort surviving Pareto candidates: subcostal preferred, maximum stone coverage, maximum clearance, shorter tract length
         def candidate_sort_key(c: CandidateTrajectory):
             rib_penalty = 0 if c.access_rib_classification == "SUBCOSTAL" else (1 if "11_12" in c.access_rib_classification else 2)
-            return (rib_penalty, -c.min_effective_clearance_mm, c.tract_length_mm)
+            return (rib_penalty, -c.reachable_stone_fraction, -c.min_effective_clearance_mm, c.tract_length_mm)
 
         ranked_candidates = sorted(eval_result.pareto_candidates, key=candidate_sort_key)
         top_candidates = ranked_candidates[:5] if ranked_candidates else []
@@ -766,7 +801,10 @@ def run_planning_pipeline(
     mesh_exports: Dict[str, MeshExportResult] = {}
 
     # Kidney mesh
-    if np.any(kidney_mask):
+    is_demo_mode = config.get("demo_mode", False)
+    if is_demo_mode and (meshes_dir / "kidney.glb").exists():
+        logger.info("Preserving high-fidelity anatomical kidney mesh in demo mode.")
+    elif np.any(kidney_mask):
         k_mesh = mask_to_surface_mesh(kidney_mask, spatial, target_faces=15000)
         res_k = export_mesh_glb(k_mesh, meshes_dir / "kidney.glb", organ_name="kidney")
         export_mesh_stl(k_mesh, meshes_dir / "kidney.stl", organ_name="kidney")

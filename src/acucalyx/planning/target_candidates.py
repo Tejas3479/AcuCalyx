@@ -212,49 +212,96 @@ def generate_candidate_puncture_zones(
     side: str = "left"
 ) -> List[ConicalPunctureZone]:
     """
-    Constructs candidate conical puncture zones for backward compatibility with v2.1 tests.
+    Constructs candidate conical puncture zones targeting detected calculi
+    and anatomical calyx fornices.
     """
     zones: List[ConicalPunctureZone] = []
     medial_dir = -1.0 if side.lower() == "left" else 1.0
-
-    lower_papilla = np.array([
-        kidney_center_lps[0] + 0.3 * kidney_radii_lps[0] * (-medial_dir),
-        kidney_center_lps[1] + 0.5 * kidney_radii_lps[1],
-        kidney_center_lps[2] - 0.6 * kidney_radii_lps[2]
-    ])
-    lower_axis = np.array([medial_dir * 0.7, -0.6, 0.4])
-    lower_axis = lower_axis / np.linalg.norm(lower_axis)
 
     conf_score = 0.90 if pcs_visibility == PCSVisibilityState.DIRECTLY_OPACIFIED else (
         0.75 if pcs_visibility == PCSVisibilityState.HYDRONEPHROTIC_DISTENDED else 0.35
     )
 
-    zones.append(ConicalPunctureZone(
-        zone_id="ZONE_POSTERIOR_LOWER",
-        calyx_group=CalyxGroup.POSTERIOR_LOWER,
-        apex_papilla_lps_mm=lower_papilla,
-        infundibular_axis_unit=lower_axis,
-        cone_half_angle_deg=20.0,
-        visibility_state=pcs_visibility,
-        confidence_score=conf_score
-    ))
+    # 1. Synthesize targeted puncture zones directly aligned with detected stones
+    targeted_calyces = set()
+    if detected_stone_centroids:
+        for idx, stone in enumerate(detected_stone_centroids):
+            stone = np.asarray(stone, dtype=np.float64)
+            dz = stone[2] - kidney_center_lps[2]
+            
+            # Determine target calyx group based on craniocaudal level
+            if dz < -0.15 * kidney_radii_lps[2]:
+                c_group = CalyxGroup.POSTERIOR_LOWER
+            elif dz > 0.15 * kidney_radii_lps[2]:
+                c_group = CalyxGroup.POSTERIOR_UPPER
+            else:
+                c_group = CalyxGroup.POSTERIOR_MIDDLE
 
-    mid_papilla = np.array([
-        kidney_center_lps[0] + 0.4 * kidney_radii_lps[0] * (-medial_dir),
-        kidney_center_lps[1] + 0.6 * kidney_radii_lps[1],
-        kidney_center_lps[2]
-    ])
-    mid_axis = np.array([medial_dir * 0.8, -0.6, 0.0])
-    mid_axis = mid_axis / np.linalg.norm(mid_axis)
+            if c_group in targeted_calyces:
+                continue
+            targeted_calyces.add(c_group)
 
-    zones.append(ConicalPunctureZone(
-        zone_id="ZONE_POSTERIOR_MIDDLE",
-        calyx_group=CalyxGroup.POSTERIOR_MIDDLE,
-        apex_papilla_lps_mm=mid_papilla,
-        infundibular_axis_unit=mid_axis,
-        cone_half_angle_deg=20.0,
-        visibility_state=pcs_visibility,
-        confidence_score=conf_score
-    ))
+            # Papilla fornix sits posterolateral to the calculus within the calyx cup
+            z_offset = -0.5 if dz <= 0 else 0.5
+            papilla_target = stone + np.array([-medial_dir * 1.5, 2.5, z_offset])
+
+            # Working infundibular axis points through the stone towards the central renal pelvis
+            pelvis_approx = np.array([
+                kidney_center_lps[0] + medial_dir * 3.0,
+                kidney_center_lps[1] - 4.0,
+                kidney_center_lps[2]
+            ])
+            inf_axis = pelvis_approx - papilla_target
+            inf_norm = np.linalg.norm(inf_axis)
+            inf_axis = (inf_axis / inf_norm) if inf_norm > 1e-3 else np.array([medial_dir * 0.7, -0.6, 0.4])
+
+            zones.append(ConicalPunctureZone(
+                zone_id=f"ZONE_{c_group.value}",
+                calyx_group=c_group,
+                apex_papilla_lps_mm=papilla_target,
+                infundibular_axis_unit=inf_axis,
+                cone_half_angle_deg=25.0,
+                visibility_state=pcs_visibility,
+                confidence_score=min(1.0, conf_score + 0.05)
+            ))
+
+    # 2. Baseline reference calyces (if not already targeted by a stone)
+    if CalyxGroup.POSTERIOR_LOWER not in targeted_calyces:
+        lower_papilla = np.array([
+            kidney_center_lps[0] + 0.3 * kidney_radii_lps[0] * (-medial_dir),
+            kidney_center_lps[1] + 0.5 * kidney_radii_lps[1],
+            kidney_center_lps[2] - 0.6 * kidney_radii_lps[2]
+        ])
+        lower_axis = np.array([medial_dir * 0.7, -0.6, 0.4])
+        lower_axis = lower_axis / np.linalg.norm(lower_axis)
+
+        zones.append(ConicalPunctureZone(
+            zone_id="ZONE_POSTERIOR_LOWER",
+            calyx_group=CalyxGroup.POSTERIOR_LOWER,
+            apex_papilla_lps_mm=lower_papilla,
+            infundibular_axis_unit=lower_axis,
+            cone_half_angle_deg=20.0,
+            visibility_state=pcs_visibility,
+            confidence_score=conf_score
+        ))
+
+    if CalyxGroup.POSTERIOR_MIDDLE not in targeted_calyces:
+        mid_papilla = np.array([
+            kidney_center_lps[0] + 0.4 * kidney_radii_lps[0] * (-medial_dir),
+            kidney_center_lps[1] + 0.6 * kidney_radii_lps[1],
+            kidney_center_lps[2]
+        ])
+        mid_axis = np.array([medial_dir * 0.8, -0.6, 0.0])
+        mid_axis = mid_axis / np.linalg.norm(mid_axis)
+
+        zones.append(ConicalPunctureZone(
+            zone_id="ZONE_POSTERIOR_MIDDLE",
+            calyx_group=CalyxGroup.POSTERIOR_MIDDLE,
+            apex_papilla_lps_mm=mid_papilla,
+            infundibular_axis_unit=mid_axis,
+            cone_half_angle_deg=20.0,
+            visibility_state=pcs_visibility,
+            confidence_score=conf_score
+        ))
 
     return zones

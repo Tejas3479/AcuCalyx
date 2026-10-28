@@ -101,6 +101,13 @@ def generate_synthetic_pcnl_phantom(
     # 2. Kidney (ellipsoid on left side: X in [10, 35], Y in [0, 25], Z in [25, 75])
     k_center = np.array([20.0, 10.0, 50.0])
     k_radii = np.array([14.0, 10.0, 22.0])
+    
+    # Perinephric fat envelope (retroperitoneal fat separating kidney from body wall)
+    perinephric_fat = (((X_phys - k_center[0]) / (k_radii[0] + 4.0))**2 + \
+                       ((Y_phys - k_center[1]) / (k_radii[1] + 4.0))**2 + \
+                       ((Z_phys - k_center[2]) / (k_radii[2] + 4.0))**2) <= 1.0
+    volume[perinephric_fat & body_mask] = -100.0  # Retroperitoneal fat
+    
     kidney_dist = ((X_phys - k_center[0]) / k_radii[0])**2 + \
                   ((Y_phys - k_center[1]) / k_radii[1])**2 + \
                   ((Z_phys - k_center[2]) / k_radii[2])**2

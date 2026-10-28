@@ -22,6 +22,7 @@ import hmac
 import json
 import logging
 import os
+import re
 from pathlib import Path
 import secrets
 import threading
@@ -50,11 +51,36 @@ if os.environ.get("ACUCALYX_ENV") == "production" and (not _raw_auth_secret or _
 AUTH_SECRET_KEY = (_raw_auth_secret or "ACUCALYX_SECURE_SURGICAL_JWT_SECRET_2026_PROD").encode("utf-8")
 TOKEN_EXPIRY_HOURS = 24
 
-# Active session revocation list (in-memory, thread-safe)
-_REVOKED_TOKEN_SIGNATURES: Set[str] = set()
+# Active session revocation list (in-memory & disk-backed with TTL eviction)
+_REVOKED_TOKEN_EXPIRIES: Dict[str, float] = {}
 _REVOKED_LOCK = threading.Lock()
+REVOKED_TOKENS_FILE = DATA_DIR / "revoked_tokens.json"
 
-# Login rate-limiting and brute force lockout (in-memory, thread-safe)
+
+def _load_revoked_tokens() -> None:
+    global _REVOKED_TOKEN_EXPIRIES
+    if REVOKED_TOKENS_FILE.is_file():
+        try:
+            with open(REVOKED_TOKENS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                now = time.time()
+                _REVOKED_TOKEN_EXPIRIES = {k: float(v) for k, v in data.items() if float(v) > now}
+        except Exception:
+            pass
+
+
+def _save_revoked_tokens() -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    temp = REVOKED_TOKENS_FILE.with_suffix(f".tmp_{secrets.token_hex(4)}")
+    try:
+        with open(temp, "w", encoding="utf-8") as f:
+            json.dump(_REVOKED_TOKEN_EXPIRIES, f)
+        temp.replace(REVOKED_TOKENS_FILE)
+    except Exception:
+        pass
+
+
+# Login rate-limiting and brute force lockout (composite IP + username, thread-safe)
 _LOGIN_FAILURES: Dict[str, List[float]] = {}
 _LOGIN_LOCK = threading.Lock()
 MAX_LOGIN_ATTEMPTS = 5
@@ -75,6 +101,11 @@ router = APIRouter(prefix="/api/auth", tags=["Doctor Authentication & Privacy"])
 # ---------------------------------------------------------------------------
 # Data Models
 # ---------------------------------------------------------------------------
+
+def _canonical_username(u: str) -> str:
+    """Canonicalizes usernames to lowercase alphanumerics for collision prevention."""
+    return re.sub(r"[._\-]", "", u.lower().strip())
+
 
 class Doctor(BaseModel):
     doctor_id: str
@@ -171,13 +202,30 @@ def create_access_token(doctor_id: str, username: str, role: str) -> str:
 
 
 def revoke_token(token: str) -> bool:
-    """Revokes a session bearer token immediately."""
+    """Revokes a session bearer token immediately and persists with TTL."""
     try:
         parts = token.split(".")
         if len(parts) == 2:
             sig = parts[1]
+            now = time.time()
+            exp = now + TOKEN_EXPIRY_HOURS * 3600
+            try:
+                # Extract exp from payload if possible
+                pad = len(parts[0]) % 4
+                p_b64 = parts[0] + ("=" * (4 - pad) if pad else "")
+                payload = json.loads(base64.urlsafe_b64decode(p_b64.encode("utf-8")))
+                exp = float(payload.get("exp", exp))
+            except Exception:
+                pass
             with _REVOKED_LOCK:
-                _REVOKED_TOKEN_SIGNATURES.add(sig)
+                if not _REVOKED_TOKEN_EXPIRIES:
+                    _load_revoked_tokens()
+                _REVOKED_TOKEN_EXPIRIES[sig] = exp
+                # Evict expired
+                expired = [k for k, v in _REVOKED_TOKEN_EXPIRIES.items() if v < now]
+                for k in expired:
+                    del _REVOKED_TOKEN_EXPIRIES[k]
+                _save_revoked_tokens()
             return True
     except Exception:
         pass
@@ -190,8 +238,16 @@ def is_token_revoked(token: str) -> bool:
         parts = token.split(".")
         if len(parts) == 2:
             sig = parts[1]
+            now = time.time()
             with _REVOKED_LOCK:
-                return sig in _REVOKED_TOKEN_SIGNATURES
+                if not _REVOKED_TOKEN_EXPIRIES:
+                    _load_revoked_tokens()
+                exp = _REVOKED_TOKEN_EXPIRIES.get(sig)
+                if exp is not None:
+                    if exp < now:
+                        del _REVOKED_TOKEN_EXPIRIES[sig]
+                        return False
+                    return True
     except Exception:
         pass
     return False
@@ -227,31 +283,34 @@ def verify_access_token(token: str) -> Optional[Dict[str, Any]]:
         return None
 
 
-def _check_rate_limit(username: str) -> None:
-    """Enforces lockout after MAX_LOGIN_ATTEMPTS failures."""
+def _check_rate_limit(username: str, client_ip: str = "127.0.0.1") -> None:
+    """Enforces lockout after MAX_LOGIN_ATTEMPTS failures keyed on composite client IP + canonical username."""
     now = time.time()
-    key = username.lower().strip()
+    key = f"{client_ip}:{_canonical_username(username)}"
     with _LOGIN_LOCK:
+        # Periodic purge of stale entries
+        for k in list(_LOGIN_FAILURES.keys()):
+            _LOGIN_FAILURES[k] = [t for t in _LOGIN_FAILURES[k] if now - t < LOCKOUT_DURATION_SECONDS]
+            if not _LOGIN_FAILURES[k]:
+                del _LOGIN_FAILURES[k]
         attempts = _LOGIN_FAILURES.get(key, [])
-        recent = [t for t in attempts if now - t < LOCKOUT_DURATION_SECONDS]
-        _LOGIN_FAILURES[key] = recent
-        if len(recent) >= MAX_LOGIN_ATTEMPTS:
-            remaining_mins = max(1, int((LOCKOUT_DURATION_SECONDS - (now - recent[0])) // 60))
+        if len(attempts) >= MAX_LOGIN_ATTEMPTS:
+            remaining_mins = max(1, int((LOCKOUT_DURATION_SECONDS - (now - attempts[0])) // 60))
             raise HTTPException(
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=f"Security Lockout: Account temporarily locked due to {MAX_LOGIN_ATTEMPTS} failed attempts. Please retry in {remaining_mins} minutes."
             )
 
 
-def _record_login_failure(username: str) -> None:
+def _record_login_failure(username: str, client_ip: str = "127.0.0.1") -> None:
     now = time.time()
-    key = username.lower().strip()
+    key = f"{client_ip}:{_canonical_username(username)}"
     with _LOGIN_LOCK:
         _LOGIN_FAILURES.setdefault(key, []).append(now)
 
 
-def _reset_login_failures(username: str) -> None:
-    key = username.lower().strip()
+def _reset_login_failures(username: str, client_ip: str = "127.0.0.1") -> None:
+    key = f"{client_ip}:{_canonical_username(username)}"
     with _LOGIN_LOCK:
         _LOGIN_FAILURES.pop(key, None)
 
@@ -329,9 +388,39 @@ def _ensure_doctors_db() -> Dict[str, DoctorInDB]:
                 logger.warning(f"Error reading doctors registry: {e}. Re-initializing defaults.")
 
         # Initialize defaults if file missing or corrupted
+        is_prod = os.getenv("ACUCALYX_ENV") == "production"
         doctors: Dict[str, DoctorInDB] = {}
+        if is_prod:
+            admin_user = os.getenv("ACUCALYX_ADMIN_USERNAME")
+            admin_pwd = os.getenv("ACUCALYX_ADMIN_PASSWORD")
+            if admin_user and admin_pwd:
+                salt, pwd_hash = hash_password(admin_pwd, iterations=PBKDF2_RECOMMENDED_ITERATIONS)
+                admin_doc = DoctorInDB(
+                    doctor_id=f"DOC_{secrets.token_hex(6).upper()}",
+                    username=admin_user,
+                    full_name="Hospital System Administrator",
+                    title="Chief Medical Informatics Officer",
+                    department="Clinical Administration",
+                    institution="Hospital Health System",
+                    npi="1000000001",
+                    email=f"{admin_user}@hospital.org",
+                    role="ADMIN",
+                    avatar_color="#0284c7",
+                    salt_hex=salt,
+                    password_hash_hex=pwd_hash,
+                    created_at=datetime.now(timezone.utc).isoformat()
+                )
+                doctors[admin_doc.doctor_id] = admin_doc
+                _save_doctors_db(doctors)
+                _DOCTORS_CACHE = doctors
+                _DOCTORS_CACHE_MTIME = DOCTORS_FILE.stat().st_mtime if DOCTORS_FILE.is_file() else 0.0
+                return dict(doctors)
+            # In production with no admin env vars and no db file, return empty dict to avoid hardcoded default credentials
+            _DOCTORS_CACHE = {}
+            return {}
+
         for item in DEFAULT_DOCTORS:
-            salt, pwd_hash = hash_password(item["password"], iterations=PBKDF2_LEGACY_ITERATIONS)
+            salt, pwd_hash = hash_password(item["password"], iterations=PBKDF2_RECOMMENDED_ITERATIONS)
             doc = DoctorInDB(
                 doctor_id=item["doctor_id"],
                 username=item["username"],
@@ -433,35 +522,59 @@ def get_current_doctor(
 # ---------------------------------------------------------------------------
 
 @router.post("/login", response_model=TokenResponse)
-def login_doctor(req: DoctorLoginRequest, response: Response):
+def login_doctor(req: DoctorLoginRequest, response: Response, request: Request):
     """Authenticates doctor credentials and issues signed session bearer token with rate-limit protection."""
-    _check_rate_limit(req.username)
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        client_ip = forwarded.split(",")[0].strip()
+    elif request.client:
+        client_ip = request.client.host
+    else:
+        client_ip = "127.0.0.1"
+    _check_rate_limit(req.username, client_ip)
     doctors = _ensure_doctors_db()
 
-    # Find doctor by username or email (case-insensitive)
+    # Find doctor by username or email (case-insensitive and canonical match)
     matched_doc: Optional[DoctorInDB] = None
+    req_canon = _canonical_username(req.username)
     for d in doctors.values():
-        if d.username.lower() == req.username.lower() or d.email.lower() == req.username.lower():
+        if _canonical_username(d.username) == req_canon or d.email.lower() == req.username.lower():
             matched_doc = d
             break
 
     if not matched_doc or not verify_password(req.password, matched_doc.salt_hex, matched_doc.password_hash_hex):
-        _record_login_failure(req.username)
+        _record_login_failure(req.username, client_ip)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid clinical credentials. Please check your username/email and password."
         )
 
-    _reset_login_failures(req.username)
+    _reset_login_failures(req.username, client_ip)
+
+    # Transparent security upgrade for accounts with legacy 100k iteration hashes
+    try:
+        salt_bytes = bytes.fromhex(matched_doc.salt_hex)
+        key_legacy = hashlib.pbkdf2_hmac("sha256", req.password.encode("utf-8"), salt_bytes, PBKDF2_LEGACY_ITERATIONS)
+        if hmac.compare_digest(key_legacy.hex(), matched_doc.password_hash_hex):
+            new_salt, new_hash = hash_password(req.password, iterations=PBKDF2_RECOMMENDED_ITERATIONS)
+            matched_doc.salt_hex = new_salt
+            matched_doc.password_hash_hex = new_hash
+            doctors[matched_doc.doctor_id] = matched_doc
+            _save_doctors_db(doctors)
+            logger.info(f"Transparently upgraded password security to 600k iterations for {matched_doc.username}")
+    except Exception as e:
+        logger.warning(f"Legacy password upgrade check failed: {e}")
+
     token = create_access_token(matched_doc.doctor_id, matched_doc.username, matched_doc.role)
     doc_profile = Doctor(**matched_doc.model_dump(exclude={"salt_hex", "password_hash_hex"}))
 
-    logger.info(f"Doctor login successful: {doc_profile.full_name} ({doc_profile.doctor_id})")
+    is_prod = os.getenv("ACUCALYX_ENV") == "production"
     response.set_cookie(
         key="acucalyx_token",
         value=token,
         httponly=True,
-        samesite="lax",
+        secure=is_prod,
+        samesite="strict" if is_prod else "lax",
         max_age=TOKEN_EXPIRY_HOURS * 3600
     )
     return TokenResponse(
@@ -475,9 +588,23 @@ def login_doctor(req: DoctorLoginRequest, response: Response):
 @router.post("/register", response_model=TokenResponse)
 def register_doctor(req: DoctorRegisterRequest, response: Response):
     """
-    Registers a new doctor profile with strict role validation.
+    Registers a new doctor profile with strict role validation and collision prevention.
     Privileged roles (CHIEF_SURGEON, ADMIN) cannot be self-assigned.
     """
+    is_prod = os.getenv("ACUCALYX_ENV") == "production"
+    if is_prod and os.getenv("ACUCALYX_ALLOW_REGISTRATION", "0") != "1":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Public self-registration is disabled in production. An administrator must provision your account."
+        )
+
+    # Password complexity policy
+    if len(req.password) < 8 or not any(c.isupper() for c in req.password) or not any(c.isdigit() for c in req.password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Password policy requirement: minimum 8 characters, at least one uppercase letter and one number."
+        )
+
     doctors = _ensure_doctors_db()
 
     # Role privilege escalation check
@@ -491,14 +618,19 @@ def register_doctor(req: DoctorRegisterRequest, response: Response):
     allowed_self_roles = {"ATTENDING_SURGEON", "FELLOW", "RESIDENT", "RADIOLOGIST"}
     assigned_role = requested_role if requested_role in allowed_self_roles else "ATTENDING_SURGEON"
 
-    # Check if username or email already exists
+    # Check if canonical username or email already exists (treats '.', '_', '-' as identical to block account takeover)
+    req_canon = _canonical_username(req.username)
     for d in doctors.values():
-        if d.username.lower() == req.username.lower():
-            raise HTTPException(status_code=400, detail="Username is already in use by another physician.")
+        if _canonical_username(d.username) == req_canon:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username is already in use by another physician.")
         if d.email.lower() == req.email.lower():
-            raise HTTPException(status_code=400, detail="Email address is already registered.")
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email address is already registered.")
 
-    doctor_id = f"DOC_{req.username.upper().replace('.', '_')}"
+    # Unique random doctor ID to prevent ID collision and takeover
+    doctor_id = f"DOC_{secrets.token_hex(6).upper()}"
+    while doctor_id in doctors:
+        doctor_id = f"DOC_{secrets.token_hex(6).upper()}"
+
     salt, pwd_hash = hash_password(req.password, iterations=PBKDF2_RECOMMENDED_ITERATIONS)
 
     new_doc = DoctorInDB(
@@ -528,7 +660,8 @@ def register_doctor(req: DoctorRegisterRequest, response: Response):
         key="acucalyx_token",
         value=token,
         httponly=True,
-        samesite="lax",
+        secure=is_prod,
+        samesite="strict" if is_prod else "lax",
         max_age=TOKEN_EXPIRY_HOURS * 3600
     )
     return TokenResponse(

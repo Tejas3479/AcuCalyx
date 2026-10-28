@@ -113,10 +113,36 @@ class AcuCalyxApplication {
     };
 
     window.selectTrajectory = async (candId) => {
-      const caseId = caseService.currentCaseId;
-      if (caseId && candId) {
-        await caseService.selectTrajectory(caseId, candId);
-        showToast(`Selected access tract: ${candId}`, 'info');
+      const caseId = caseService.currentCaseId || window.currentCaseId;
+      if (!candId) return;
+
+      // 1. Synchronize 3D WebGL viewport active needle trajectory
+      if (window.viewer3d && typeof window.viewer3d.setActiveTrajectory === 'function') {
+        window.viewer3d.setActiveTrajectory(candId);
+      }
+      const candidatesList = caseService.currentCandidates || window.currentCandidates || [];
+      const candObj = candidatesList.find(c => (c.candidate_id || c.id) === candId);
+      if (candObj && window.mprViewer && typeof window.mprViewer.setActiveCandidate === 'function') {
+        window.mprViewer.setActiveCandidate(candObj);
+      }
+
+      // 2. Update candidate cards highlight across views & refresh keyframe preview
+      document.querySelectorAll('.candidate-card').forEach(c => c.classList.remove('active'));
+      const card = document.getElementById(`card-${candId}`);
+      if (card) card.classList.add('active');
+
+      if (typeof window.updateKeyframePreview === 'function') {
+        window.updateKeyframePreview();
+      }
+
+      // 3. Persist selection via backend service
+      if (caseId) {
+        try {
+          await caseService.selectTrajectory(caseId, candId);
+          showToast(`Selected access tract: ${candId}`, 'info');
+        } catch (e) {
+          console.warn('Backend tract selection sync failed:', e);
+        }
       }
     };
 

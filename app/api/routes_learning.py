@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field
 
 from app.api.auth import Doctor, get_current_doctor
 from app.api.case_store import CaseStore
-from src.acucalyx.ai.federated_learning import federated_coordinator, FEATURE_NAMES
+from acucalyx.ai.federated_learning import federated_coordinator, FEATURE_NAMES
 
 logger = logging.getLogger("acucalyx.api.learning")
 router = APIRouter(prefix="/api/learning", tags=["Privacy-Preserving Federated Learning"])
@@ -50,13 +50,13 @@ def train_local_privacy_model(
     req: Optional[LocalTrainingRequest] = None,
     current_doctor: Doctor = Depends(get_current_doctor)
 ) -> Dict[str, Any]:
-    req = req or LocalTrainingRequest()
     """
     Initiates a local, patient-isolated training epoch on the current doctor's approved cases.
     Computes local loss and gradients, clips L2 norm (C=1.0), adds calibrated Gaussian noise,
     and submits only the differentially private gradient delta to the consensus model.
     No patient names, MRNs, CT images, or organ coordinates ever leave this machine.
     """
+    req = req or LocalTrainingRequest()
     case_store = CaseStore()
     doctor_cases = case_store.list_cases_for_doctor(current_doctor.doctor_id)
     

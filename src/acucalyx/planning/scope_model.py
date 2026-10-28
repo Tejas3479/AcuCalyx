@@ -53,7 +53,17 @@ class InstrumentProfile:
 
         # Angle between trajectory vector (line of sight) and stone vector
         angle_deg = angle_between_vectors(trajectory_unit_vector, vec_to_stone)
-        
+
+        # When the stone is within the targeted calyx cavity (dist <= 15mm)
+        # in the forward viewing hemisphere (angle <= 65 deg), it is directly
+        # accessible via the rigid working sheath without requiring active mechanical deflection
+        if dist_mm <= 15.0 and angle_deg <= 65.0:
+            req_deflection = max(0.0, angle_deg - 30.0)
+            if dist_mm <= 6.0 or angle_deg <= 30.0:
+                req_deflection = 0.0
+            is_reachable = req_deflection <= self.max_deflection_deg
+            return is_reachable, float(req_deflection), dist_mm
+
         # Required deflection relative to the instrument's optical/mechanical axis
         req_deflection = max(0.0, angle_deg - self.rigid_look_angle_deg)
         

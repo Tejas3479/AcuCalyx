@@ -204,7 +204,7 @@ AcuCalyx maintains a comprehensive, automated test suite spanning unit tests, cl
 python -m pytest tests/unit tests/golden tests/integration tests/property
 ```
 
-### Test Suite Structure (303 Tests, 100% Passing):
+### Test Suite Structure (312 Tests, 100% Passing):
 * **Unit Tests (279 tests):**
   * Geometry, Coordinates & SimpleITK (`test_coordinates.py`, `test_volumetry.py`)
   * DICOM & NIfTI Ingestion (`test_dicom_ingestion.py`, `test_nifti_ingestion.py`, `test_quality_gate.py`)

@@ -11,8 +11,8 @@
     "role": "CHIEF_SURGEON",
     "avatar_color": "#0284c7",
     "created_at": "2026-10-21T07:15:05.555955+00:00",
-    "salt_hex": "1aff86362afc9de6777955bcb52b1a4d",
-    "password_hash_hex": "aee2904684b7de9def8eafd871c907951f5aabeb79e7180a05a5ea485b03a4c2"
+    "salt_hex": "54f9357f6d3464ac8b2ed9de214b61a5",
+    "password_hash_hex": "66801045a2db81156f2d21b4df96ecb02a971244a2cb086edc90d7111b3882a9"
   },
   "DOC_MARCUS_RAMIREZ": {
     "doctor_id": "DOC_MARCUS_RAMIREZ",
@@ -26,8 +26,8 @@
     "role": "ATTENDING_SURGEON",
     "avatar_color": "#047857",
     "created_at": "2026-10-21T07:15:05.734479+00:00",
-    "salt_hex": "3ac1a174863ff4b641132a8a1a9b7148",
-    "password_hash_hex": "c837502dbd4d403cc9e58018ce9f44d0573856eac08e4d235bc77c462fe553bf"
+    "salt_hex": "f4df13921dbc46b1aa55256cb70357f9",
+    "password_hash_hex": "f98cebd69177397a67de1031cd973d244b9b50b7173d237bef8f5748da181599"
   },
   "DOC_SARAH_JENKINS": {
     "doctor_id": "DOC_SARAH_JENKINS",
@@ -41,7 +41,7 @@
     "role": "FELLOW",
     "avatar_color": "#7c3aed",
     "created_at": "2026-10-21T07:15:05.902089+00:00",
-    "salt_hex": "95e50685ea6b55f568996a293c7f2044",
-    "password_hash_hex": "67cf336ebd328c1be3ac54386228f2b666e5f4d1e696560a437e1f0340a9ee3a"
+    "salt_hex": "9da896c3789a861dc2350424461c503b",
+    "password_hash_hex": "c2b85f0d1d86ea2138c01d497f7e4a0135e7568457f70e9ba288f91e292f80cc"
   }
 }

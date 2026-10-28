@@ -9,7 +9,7 @@ import math
 import pytest
 from fastapi.testclient import TestClient
 
-from src.acucalyx.geometry.anatomical_kidney_builder import AnatomicalKidneyBuilder
+from acucalyx.geometry.anatomical_kidney_builder import AnatomicalKidneyBuilder
 from app.api.main import app
 
 
@@ -81,9 +81,22 @@ def test_server_mesh_gating_strictly_fails_closed_for_patient_cases(api_client):
     Endpoints serving 3D anatomical meshes must return HTTP 404 for non-demo patient cases
     if segmentation is missing, blocking any silent substitution of generic templates.
     """
-    # Non-existent or non-demo patient case ID
-    response = api_client.get("/api/cases/PATIENT_REAL_NON_DEMO_001/mesh/capsule?allow_template=true")
-    assert response.status_code == 404, f"Expected 404 fail-closed, got {response.status_code}"
+    from app.api.case_store import CASES_DIR, save_case_meta
+    import shutil
+    case_id = "PATIENT_REAL_NON_DEMO_001"
+    case_dir = CASES_DIR / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        save_case_meta(case_id, {
+            "case_id": case_id,
+            "is_demo": False,
+            "owner_doctor_id": "DOC_ELENA_CHEN"
+        })
+        # Query real endpoint /meshes/{mesh_name}
+        response = api_client.get(f"/api/cases/{case_id}/meshes/renal_capsule?allow_template=true")
+        assert response.status_code == 404, f"Expected 404 fail-closed, got {response.status_code}"
 
-    detail = response.json().get("detail", "")
-    assert "Mesh" in detail or "not found" in detail.lower()
+        detail = response.json().get("detail", "")
+        assert "Patient-specific 3D mesh" in detail or "Planning pipeline must be run" in detail
+    finally:
+        shutil.rmtree(case_dir, ignore_errors=True)

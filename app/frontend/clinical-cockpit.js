@@ -45,6 +45,8 @@
     }
 
     let viewer3d = null;
+    let currentSlicePlane = 'coronal';
+    let sliceInverted = false;
     let mprViewer = null;
     let currentCaseId = null;
     let currentCandidates = [];
@@ -91,8 +93,7 @@
       });
 
       // 3. UI Buttons
-      document.getElementById('btn-new-demo').addEventListener('click', createDemoCase);
-      document.getElementById('btn-run-plan').addEventListener('click', runPlanning);
+      // Note: #btn-new-demo and #btn-run-plan click handlers are centrally managed by Topbar.js to avoid duplicate submissions
       document.getElementById('btn-download-pdf').addEventListener('click', downloadPDF);
       document.getElementById('btn-provenance').addEventListener('click', showProvenance);
       document.getElementById('btn-approve-trajectory').addEventListener('click', approveTrajectory);
@@ -157,26 +158,79 @@
       document.getElementById('layer-ribs').addEventListener('change', (e) => viewer3d.setLayerVisibility('ribs', e.target.checked));
       document.getElementById('opacity-ribs').addEventListener('input', (e) => viewer3d.setLayerOpacity('ribs', parseFloat(e.target.value)));
 
-      // File upload handler
-      document.getElementById('file-upload').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const formData = new FormData();
-        formData.append('file', file);
-        try {
-          const res = await fetch('/api/cases/upload', { method: 'POST', body: formData });
-          const data = await res.json();
-          await loadCasesList();
-          selectCase(data.case_id);
-        } catch (err) {
-          alert('Upload failed: ' + err.message);
-        }
-      });
+      // Anatomical Slicing & Virtual Scalpel Resection Controls
+      const sliceSlider = document.getElementById('slice-depth-slider');
+      const sliceVal = document.getElementById('slice-depth-val');
+      const sliceToggle = document.getElementById('slice-enable-toggle');
+      const sliceSepSlider = document.getElementById('slice-separation-slider');
+      const sliceSepVal = document.getElementById('slice-separation-val');
+      const sliceYawSlider = document.getElementById('slice-yaw-slider');
+      const sliceYawVal = document.getElementById('slice-yaw-val');
+      const slicePitchSlider = document.getElementById('slice-pitch-slider');
+      const slicePitchVal = document.getElementById('slice-pitch-val');
+      const sliceGizmoToggle = document.getElementById('slice-gizmo-toggle');
 
-      // Case select dropdown change
-      document.getElementById('case-select').addEventListener('change', (e) => {
-        if (e.target.value) selectCase(e.target.value);
-      });
+      if (sliceSlider) {
+        sliceSlider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (sliceVal) sliceVal.textContent = `${val >= 0 ? '+' : ''}${Math.round(val)} mm`;
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ offsetMm: val, enabled: sliceToggle ? sliceToggle.checked : true });
+          }
+        });
+      }
+
+      if (sliceToggle) {
+        sliceToggle.addEventListener('change', (e) => {
+          const isEnabled = e.target.checked;
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ enabled: isEnabled });
+          }
+        });
+      }
+
+      if (sliceSepSlider) {
+        sliceSepSlider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (sliceSepVal) sliceSepVal.textContent = `${Math.round(val)} mm`;
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ separationMm: val, mode: 'bivalve', enabled: true });
+          }
+        });
+      }
+
+      if (sliceYawSlider) {
+        sliceYawSlider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (sliceYawVal) sliceYawVal.textContent = `${Math.round(val)}°`;
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ angleYaw: val, enabled: true });
+          }
+        });
+      }
+
+      if (slicePitchSlider) {
+        slicePitchSlider.addEventListener('input', (e) => {
+          const val = parseFloat(e.target.value);
+          if (slicePitchVal) slicePitchVal.textContent = `${val >= 0 ? '+' : ''}${Math.round(val)}°`;
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ anglePitch: val, enabled: true });
+          }
+        });
+      }
+
+      if (sliceGizmoToggle) {
+        sliceGizmoToggle.addEventListener('change', (e) => {
+          if (viewer3d) {
+            viewer3d.setSlicingParameters({ showGizmo: e.target.checked });
+          }
+        });
+      }
+
+      // Initialize Scalpel Touch / Pencil / Mouse Freehand Overlay
+      initScalpelDrawOverlay();
+
+      // Note: #file-upload and #case-select change handlers are centrally managed by Topbar.js to avoid duplicate triggers
 
       window.__cockpitWorkflowAttached = true;
 
@@ -352,8 +406,8 @@
       const warnBadge = document.getElementById('synthetic-mesh-warning');
       if (warnBadge) warnBadge.style.display = 'block';
       viewer3d.clearScene();
-      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
-      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
+      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.45);
+      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.20);
       await viewer3d.loadMesh(caseId, 'medulla_pyramids', 'medulla_pyramids', 0.85);
       await viewer3d.loadMesh(caseId, 'collecting_system', 'collecting_system', 0.90);
       await viewer3d.loadMesh(caseId, 'renal_arteries', 'renal_arteries', 0.85);
@@ -361,8 +415,29 @@
       await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
       await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
       await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
-      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.30); } catch(e) {}
-      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.65); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.22); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.50); } catch(e) {}
+
+      // Synchronize layer visibility with checkboxes
+      const organCheckboxMap = {
+        'kidney': 'layer-kidney',
+        'renal_capsule': 'layer-capsule',
+        'medulla_pyramids': 'layer-pyramids',
+        'collecting_system': 'layer-collecting',
+        'renal_arteries': 'layer-arteries',
+        'renal_veins': 'layer-veins',
+        'renal_nerves': 'layer-nerves',
+        'nephrons': 'layer-nephrons',
+        'stones': 'layer-stones',
+        'colon': 'layer-colon',
+        'ribs': 'layer-ribs'
+      };
+      Object.entries(organCheckboxMap).forEach(([organKey, elId]) => {
+        const el = document.getElementById(elId);
+        if (el) {
+          viewer3d.setLayerVisibility(organKey, el.checked);
+        }
+      });
     }
 
     async function loadCaseArtifacts(caseId) {
@@ -409,8 +484,8 @@
         }
       }
       viewer3d.clearScene();
-      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.35);
-      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.65);
+      await viewer3d.loadMesh(caseId, 'kidney', 'kidney', 0.45);
+      await viewer3d.loadMesh(caseId, 'renal_capsule', 'renal_capsule', 0.20);
       await viewer3d.loadMesh(caseId, 'medulla_pyramids', 'medulla_pyramids', 0.85);
       await viewer3d.loadMesh(caseId, 'collecting_system', 'collecting_system', 0.90);
       await viewer3d.loadMesh(caseId, 'renal_arteries', 'renal_arteries', 0.85);
@@ -418,8 +493,29 @@
       await viewer3d.loadMesh(caseId, 'renal_nerves', 'renal_nerves', 0.95);
       await viewer3d.loadMesh(caseId, 'nephron_unit', 'nephrons', 0.85);
       await viewer3d.loadMesh(caseId, 'stones', 'stones', 1.0);
-      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.30); } catch(e) {}
-      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.65); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'colon', 'colon', 0.22); } catch(e) {}
+      try { await viewer3d.loadMesh(caseId, 'ribs', 'ribs', 0.50); } catch(e) {}
+
+      // Synchronize layer visibility with checkboxes
+      const organCheckboxMap = {
+        'kidney': 'layer-kidney',
+        'renal_capsule': 'layer-capsule',
+        'medulla_pyramids': 'layer-pyramids',
+        'collecting_system': 'layer-collecting',
+        'renal_arteries': 'layer-arteries',
+        'renal_veins': 'layer-veins',
+        'renal_nerves': 'layer-nerves',
+        'nephrons': 'layer-nephrons',
+        'stones': 'layer-stones',
+        'colon': 'layer-colon',
+        'ribs': 'layer-ribs'
+      };
+      Object.entries(organCheckboxMap).forEach(([organKey, elId]) => {
+        const el = document.getElementById(elId);
+        if (el) {
+          viewer3d.setLayerVisibility(organKey, el.checked);
+        }
+      });
 
       // Trajectories
       currentCandidates.forEach((c, idx) => {
@@ -2744,6 +2840,349 @@
     window.runPlanning = runPlanning;
     window.downloadPDF = downloadPDF;
 
-    window.__openComparisonMatrixImpl = openComparisonMatrix;
-    window.__openSummaryCardImpl = openSummaryCard;
-    window.__printSummaryCardImpl = printSummaryCard;
+
+    let scalpelDrawActive = false;
+    let isDrawingStroke = false;
+    let strokeStart = { x: 0, y: 0 };
+    let strokeCurrent = { x: 0, y: 0 };
+
+    function initScalpelDrawOverlay() {
+      const canvas = document.getElementById('scalpel-draw-overlay');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+
+      function resizeOverlay() {
+        const container = document.getElementById('three-container');
+        if (!container) return;
+        canvas.width = container.clientWidth;
+        canvas.height = container.clientHeight;
+      }
+      window.addEventListener('resize', resizeOverlay);
+      resizeOverlay();
+
+      canvas.addEventListener('pointerdown', (e) => {
+        if (!scalpelDrawActive) return;
+        isDrawingStroke = true;
+        const rect = canvas.getBoundingClientRect();
+        strokeStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        strokeCurrent = { ...strokeStart };
+        if (viewer3d && viewer3d.controls) {
+          viewer3d.controls.enabled = false;
+        }
+        canvas.setPointerCapture(e.pointerId);
+      });
+
+      canvas.addEventListener('pointermove', (e) => {
+        if (!isDrawingStroke) return;
+        const rect = canvas.getBoundingClientRect();
+        strokeCurrent = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const dx = strokeCurrent.x - strokeStart.x;
+        const dy = strokeCurrent.y - strokeStart.y;
+        const dist = Math.hypot(dx, dy);
+        const angleDeg = Math.round((Math.atan2(dy, dx) * 180 / Math.PI + 360) % 360);
+
+        // 1. Neon Outer Glow
+        ctx.beginPath();
+        ctx.moveTo(strokeStart.x, strokeStart.y);
+        ctx.lineTo(strokeCurrent.x, strokeCurrent.y);
+        ctx.strokeStyle = 'rgba(0, 210, 255, 0.4)';
+        ctx.lineWidth = 8;
+        ctx.lineCap = 'round';
+        ctx.stroke();
+
+        // 2. Core Scalpel Cut Line
+        ctx.beginPath();
+        ctx.moveTo(strokeStart.x, strokeStart.y);
+        ctx.lineTo(strokeCurrent.x, strokeCurrent.y);
+        ctx.strokeStyle = '#ec4899';
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // 3. Start Anchor Bead
+        ctx.beginPath();
+        ctx.arc(strokeStart.x, strokeStart.y, 4, 0, Math.PI * 2);
+        ctx.fillStyle = '#00d2ff';
+        ctx.fill();
+
+        // 4. Scalpel Tip
+        ctx.beginPath();
+        ctx.arc(strokeCurrent.x, strokeCurrent.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#ec4899';
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        // 5. Floating Real-Time Angle / Length HUD
+        if (dist > 20) {
+          const mx = (strokeStart.x + strokeCurrent.x) / 2;
+          const my = (strokeStart.y + strokeCurrent.y) / 2 - 14;
+          const text = `Incision: ${angleDeg}° (${Math.round(dist)}px)`;
+          ctx.font = 'bold 11px system-ui, sans-serif';
+          const tw = ctx.measureText(text).width;
+          ctx.fillStyle = 'rgba(10, 15, 26, 0.9)';
+          ctx.strokeStyle = '#00d2ff';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.roundRect(mx - tw / 2 - 6, my - 12, tw + 12, 18, 4);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = '#00d2ff';
+          ctx.fillText(text, mx - tw / 2, my + 1);
+        }
+      });
+
+      const finishStroke = (e) => {
+        if (!isDrawingStroke) return;
+        isDrawingStroke = false;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        if (viewer3d && viewer3d.controls) {
+          viewer3d.controls.enabled = true;
+        }
+        try {
+          canvas.releasePointerCapture(e.pointerId);
+        } catch (err) {}
+
+        const dx = strokeCurrent.x - strokeStart.x;
+        const dy = strokeCurrent.y - strokeStart.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist >= 15 && viewer3d) {
+          const rect = canvas.getBoundingClientRect();
+          viewer3d.sliceFromScreenStroke(
+            strokeStart.x + rect.left,
+            strokeStart.y + rect.top,
+            strokeCurrent.x + rect.left,
+            strokeCurrent.y + rect.top
+          );
+
+          const hud = document.getElementById('scalpel-hud-guide');
+          if (hud) {
+            hud.textContent = '✓ Resection Angle Applied!';
+            hud.style.borderColor = '#00e5a3';
+            hud.style.color = '#00e5a3';
+            setTimeout(() => {
+              hud.style.display = 'none';
+              hud.textContent = '✏️ Draw cut line across kidney with finger, stylus, or mouse';
+              hud.style.borderColor = '#00d2ff';
+              hud.style.color = '#00d2ff';
+            }, 1400);
+          }
+        }
+
+        toggleScalpelDrawMode(false);
+      };
+
+      canvas.addEventListener('pointerup', finishStroke);
+      canvas.addEventListener('pointercancel', finishStroke);
+    }
+
+    function toggleCameraDropdown(e) {
+      if (e) e.stopPropagation();
+      const menu = document.getElementById('menu-camera-views');
+      if (!menu) return;
+      const isClosed = (menu.style.display === 'none' || menu.style.display === '');
+      menu.style.display = isClosed ? 'flex' : 'none';
+    }
+
+    function selectCameraPreset(preset, label) {
+      if (viewer3d) {
+        if (preset === 'stone') {
+          viewer3d.focusOnStone(false);
+        } else {
+          viewer3d.setCameraView(preset);
+        }
+      }
+      const labelSpan = document.getElementById('current-camera-view-label');
+      if (labelSpan && label) {
+        labelSpan.textContent = label;
+      }
+      document.querySelectorAll('#menu-camera-views .dropdown-item').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.includes(label));
+      });
+      const menu = document.getElementById('menu-camera-views');
+      if (menu) menu.style.display = 'none';
+    }
+
+    function onSlicePresetSelect(value) {
+      if (value === 'stone') {
+        sliceThroughTargetStone();
+      } else if (value !== 'custom') {
+        applySlicePreset(value);
+      }
+    }
+
+    // Close dropdowns when clicking outside
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('dropdown-camera-views');
+      const menu = document.getElementById('menu-camera-views');
+      if (menu && dropdown && !dropdown.contains(e.target)) {
+        menu.style.display = 'none';
+      }
+    });
+
+    function toggleScalpelDrawMode(forceState) {
+      scalpelDrawActive = (forceState !== undefined) ? !!forceState : !scalpelDrawActive;
+      const canvas = document.getElementById('scalpel-draw-overlay');
+      const hud = document.getElementById('scalpel-hud-guide');
+      const btn = document.getElementById('btn-scalpel-draw-mode');
+
+      if (canvas) {
+        canvas.style.display = scalpelDrawActive ? 'block' : 'none';
+      }
+      if (hud) {
+        hud.style.display = scalpelDrawActive ? 'block' : 'none';
+      }
+      if (btn) {
+        btn.classList.toggle('active', scalpelDrawActive);
+      }
+    }
+
+    function setSlicingMode(mode) {
+      if (!viewer3d) return;
+      viewer3d.setSlicingParameters({ mode, enabled: true });
+    }
+
+    function setPartingSeparation(mm) {
+      if (!viewer3d) return;
+      viewer3d.setSlicingParameters({ separationMm: mm, mode: 'bivalve', enabled: true });
+    }
+
+    function stepSliceYaw(delta) {
+      if (!viewer3d) return;
+      const current = (viewer3d.slicingState && viewer3d.slicingState.angleYaw !== undefined) ? viewer3d.slicingState.angleYaw : 0;
+      const nextYaw = (current + delta + 360) % 360;
+      viewer3d.setSlicingParameters({ angleYaw: nextYaw, enabled: true });
+    }
+
+    function stepSlicePitch(delta) {
+      if (!viewer3d) return;
+      const current = (viewer3d.slicingState && viewer3d.slicingState.anglePitch !== undefined) ? viewer3d.slicingState.anglePitch : 0;
+      const nextPitch = Math.max(-90, Math.min(90, current + delta));
+      viewer3d.setSlicingParameters({ anglePitch: nextPitch, enabled: true });
+    }
+
+    function setSliceOffset(offsetMm) {
+      if (!viewer3d) return;
+      viewer3d.setSlicingParameters({ offsetMm, enabled: true });
+    }
+
+    function applySlicePreset(preset) {
+      if (!viewer3d) return;
+      document.querySelectorAll('.slice-preset-btn').forEach(b => b.classList.remove('active'));
+
+      let params = { enabled: true };
+      if (preset === 'brodel') {
+        params = { enabled: true, mode: 'bivalve', angleYaw: 30, anglePitch: 0, offsetMm: 0, separationMm: 25 };
+        const btn = document.getElementById('btn-preset-brodel');
+        if (btn) btn.classList.add('active');
+      } else if (preset === 'coronal') {
+        params = { enabled: true, mode: 'bivalve', angleYaw: 0, anglePitch: 0, offsetMm: 0, separationMm: 25 };
+        const btn = document.getElementById('btn-plane-coronal');
+        if (btn) btn.classList.add('active');
+      } else if (preset === 'axial') {
+        params = { enabled: true, mode: 'bivalve', angleYaw: 0, anglePitch: 90, offsetMm: 0, separationMm: 25 };
+        const btn = document.getElementById('btn-plane-axial');
+        if (btn) btn.classList.add('active');
+      } else if (preset === 'sagittal') {
+        params = { enabled: true, mode: 'bivalve', angleYaw: 90, anglePitch: 0, offsetMm: 0, separationMm: 25 };
+        const btn = document.getElementById('btn-plane-sagittal');
+        if (btn) btn.classList.add('active');
+      }
+      viewer3d.setSlicingParameters(params);
+    }
+
+    function sliceThroughTargetStone() {
+      if (!viewer3d) return;
+      viewer3d.sliceThroughStone();
+      if (viewer3d.slicingState && viewer3d.slicingState.separationMm === 0) {
+        viewer3d.setSlicingParameters({ separationMm: 25, mode: 'bivalve' });
+      }
+    }
+
+    function toggleSliceInvert() {
+      if (!viewer3d) return;
+      const currentInverted = viewer3d.slicingState ? !!viewer3d.slicingState.inverted : false;
+      viewer3d.setSlicingParameters({ inverted: !currentInverted });
+      const btn = document.getElementById('btn-slice-invert');
+      if (btn) {
+        btn.classList.toggle('highlight', !currentInverted);
+      }
+    }
+
+    function toggleSlicingToolbar(forceState) {
+      const bar = document.getElementById('slicing-control-bar');
+      if (!bar) return;
+      const isHidden = (bar.style.display === 'none' || bar.style.display === '');
+      const shouldShow = (forceState !== undefined) ? !!forceState : isHidden;
+      bar.style.display = shouldShow ? 'flex' : 'none';
+      const toggleBtn = document.getElementById('btn-toggle-slicing');
+      if (toggleBtn) {
+        toggleBtn.style.background = shouldShow ? 'rgba(236, 72, 153, 0.25)' : 'transparent';
+        toggleBtn.style.borderColor = shouldShow ? '#ec4899' : 'rgba(236, 72, 153, 0.4)';
+      }
+      if (shouldShow && viewer3d && (!viewer3d.slicingState || !viewer3d.slicingState.enabled)) {
+        viewer3d.setSlicingParameters({ enabled: true });
+      }
+    }
+
+    // Auto-sync UI controls when 3D slicing state changes
+    window.addEventListener('acucalyx:slicingStateChanged', (e) => {
+      const s = e.detail;
+      if (!s) return;
+
+      const toggle = document.getElementById('slice-enable-toggle');
+      if (toggle) toggle.checked = s.enabled;
+
+      const bivalveBtn = document.getElementById('btn-mode-bivalve');
+      const cutawayBtn = document.getElementById('btn-mode-cutaway');
+      const partingRow = document.getElementById('row-parting-gap');
+      if (bivalveBtn) bivalveBtn.classList.toggle('active', s.mode === 'bivalve');
+      if (cutawayBtn) cutawayBtn.classList.toggle('active', s.mode === 'cutaway');
+      if (partingRow) partingRow.style.display = (s.mode === 'bivalve') ? 'flex' : 'none';
+
+      const sepSlider = document.getElementById('slice-separation-slider');
+      const sepVal = document.getElementById('slice-separation-val');
+      if (sepSlider) sepSlider.value = s.separationMm || 0;
+      if (sepVal) sepVal.textContent = `${Math.round(s.separationMm || 0)} mm`;
+
+      const yawSlider = document.getElementById('slice-yaw-slider');
+      const yawVal = document.getElementById('slice-yaw-val');
+      if (yawSlider) yawSlider.value = s.angleYaw || 0;
+      if (yawVal) yawVal.textContent = `${Math.round(s.angleYaw || 0)}°`;
+
+      const pitchSlider = document.getElementById('slice-pitch-slider');
+      const pitchVal = document.getElementById('slice-pitch-val');
+      if (pitchSlider) pitchSlider.value = s.anglePitch || 0;
+      if (pitchVal) pitchVal.textContent = `${s.anglePitch >= 0 ? '+' : ''}${Math.round(s.anglePitch || 0)}°`;
+
+      const depthSlider = document.getElementById('slice-depth-slider');
+      const depthVal = document.getElementById('slice-depth-val');
+      if (depthSlider) depthSlider.value = s.offsetMm || 0;
+      if (depthVal) depthVal.textContent = `${s.offsetMm >= 0 ? '+' : ''}${Math.round(s.offsetMm || 0)} mm`;
+
+      const gizmoToggle = document.getElementById('slice-gizmo-toggle');
+      if (gizmoToggle) gizmoToggle.checked = !!s.showGizmo;
+    });
+
+    // Virtual Scalpel & Resection Exports
+    window.toggleCameraDropdown = toggleCameraDropdown;
+    window.selectCameraPreset = selectCameraPreset;
+    window.onSlicePresetSelect = onSlicePresetSelect;
+    window.setSlicingMode = setSlicingMode;
+    window.setPartingSeparation = setPartingSeparation;
+    window.stepSliceYaw = stepSliceYaw;
+    window.stepSlicePitch = stepSlicePitch;
+    window.setSliceOffset = setSliceOffset;
+    window.applySlicePreset = applySlicePreset;
+    window.sliceThroughTargetStone = sliceThroughTargetStone;
+    window.toggleScalpelDrawMode = toggleScalpelDrawMode;
+    window.toggleSliceInvert = toggleSliceInvert;
+    window.toggleSlicingToolbar = toggleSlicingToolbar;
+
+    // Backward Compatibility aliases
+    window.setSlicePlane = applySlicePreset;
+    window.revealStoneCutaway = sliceThroughTargetStone;

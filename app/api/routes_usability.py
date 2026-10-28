@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 import numpy as np
 
 from app.api.auth import Doctor, get_current_doctor
-from app.api.case_store import load_case_meta, save_case_meta, log_case_audit_event
+from app.api.case_store import load_case_meta, save_case_meta, log_case_audit_event, verify_case_access
 
 from acucalyx.fluoroscopy.carm_profile import PHILIPS_ZENITION_70, get_carm_profile
 from acucalyx.fluoroscopy.surgical_pose import SurgicalPatientPosition
@@ -312,7 +312,8 @@ def confirm_laterality(
 def confirm_surgical_position(
     case_id: str,
     request: PositionConfirmRequest,
-    current_doctor: Doctor = Depends(get_current_doctor)
+    current_doctor: Doctor = Depends(get_current_doctor),
+    case_access: Dict[str, Any] = Depends(verify_case_access)
 ):
     """Interlock U2: Manages 5-stage surgical orientation and SE(3) transformation tracking."""
     # Enforce case existence and doctor access
@@ -366,7 +367,11 @@ def confirm_surgical_position(
 
 
 @router.post("/cases/{case_id}/depth-check")
-def check_needle_depth(case_id: str, request: DepthCheckRequest):
+def check_needle_depth(
+    case_id: str,
+    request: DepthCheckRequest,
+    case_access: Dict[str, Any] = Depends(verify_case_access)
+):
     """Interlock U5: Enforces case-derived depth boundary and medial wall alarms."""
     interlock = DepthBoundaryInterlock(
         planned_depth_mm=request.planned_depth_mm,
@@ -383,7 +388,8 @@ def check_needle_depth(case_id: str, request: DepthCheckRequest):
 @router.get("/cases/{case_id}/verbal-card")
 def get_verbal_communication_card(
     case_id: str,
-    carm_model: str = Query("philips_zenition_70", description="C-arm hardware profile key")
+    carm_model: str = Query("philips_zenition_70", description="C-arm hardware profile key"),
+    case_access: Dict[str, Any] = Depends(verify_case_access)
 ):
     """Interlock U4: Generates standardized technician communication card and verbal readback scripts."""
     profile = get_carm_profile(carm_model)

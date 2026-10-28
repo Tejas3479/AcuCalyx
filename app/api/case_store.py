@@ -175,43 +175,45 @@ def log_case_audit_event(case_id: str, action: str, details: Dict[str, Any], use
     """
     Appends an auditable event to case audit_trail.json using atomic writes,
     preserving corruption backups, and maintaining cryptographic SHA-256 tamper-evident hash chaining.
+    Entire read-modify-hash-write cycle is protected by _AUDIT_LOG_LOCK to eliminate race conditions.
     """
     case_dir = get_case_dir(case_id)
     audit_path = case_dir / "audit_trail.json"
-    events = []
-    prev_hash = "0000000000000000000000000000000000000000000000000000000000000000"
-    if audit_path.is_file():
-        try:
-            with open(audit_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if isinstance(data, list):
-                    events = data
-                    if events and isinstance(events[-1], dict) and "entry_hash" in events[-1]:
-                        prev_hash = events[-1]["entry_hash"]
-        except Exception as e:
-            logger.warning(f"Corrupt audit trail detected for {case_id}: {e}. Creating safety backup.")
-            backup_path = audit_path.with_suffix(f".bak_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}")
-            try:
-                shutil.copy2(audit_path, backup_path)
-            except Exception:
-                pass
-            events = [{"warning": "CORRUPT_AUDIT_LOG_PRESERVED_TO_BACKUP", "original_error": str(e)}]
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    canonical_details = json.dumps(details, sort_keys=True, separators=(",", ":"))
-    hash_payload = f"{prev_hash}|{now_iso}|{user}|{action}|{canonical_details}"
-    entry_hash = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
-
-    events.append({
-        "timestamp": now_iso,
-        "user": user,
-        "action": action,
-        "details": details,
-        "prev_hash": prev_hash,
-        "entry_hash": entry_hash
-    })
-    temp_audit = audit_path.with_suffix(f".tmp_{secrets.token_hex(4)}")
     with _AUDIT_LOG_LOCK:
+        events = []
+        prev_hash = "0000000000000000000000000000000000000000000000000000000000000000"
+        if audit_path.is_file():
+            try:
+                with open(audit_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if isinstance(data, list):
+                        events = data
+                        if events and isinstance(events[-1], dict) and "entry_hash" in events[-1]:
+                            prev_hash = events[-1]["entry_hash"]
+            except Exception as e:
+                logger.warning(f"Corrupt audit trail detected for {case_id}: {e}. Creating safety backup.")
+                backup_path = audit_path.with_suffix(f".bak_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}")
+                try:
+                    shutil.copy2(audit_path, backup_path)
+                except Exception:
+                    pass
+                events = [{"warning": "CORRUPT_AUDIT_LOG_PRESERVED_TO_BACKUP", "original_error": str(e)}]
+
+        now_iso = datetime.now(timezone.utc).isoformat()
+        canonical_details = json.dumps(details, sort_keys=True, separators=(",", ":"))
+        hash_payload = f"{prev_hash}|{now_iso}|{user}|{action}|{canonical_details}"
+        entry_hash = hashlib.sha256(hash_payload.encode("utf-8")).hexdigest()
+
+        events.append({
+            "timestamp": now_iso,
+            "user": user,
+            "action": action,
+            "details": details,
+            "prev_hash": prev_hash,
+            "entry_hash": entry_hash
+        })
+        temp_audit = audit_path.with_suffix(f".tmp_{secrets.token_hex(4)}")
         with open(temp_audit, "w", encoding="utf-8") as f:
             json.dump(events, f, indent=2)
         _atomic_replace_with_retry(temp_audit, audit_path)
@@ -256,20 +258,9 @@ def verify_case_access(case_id: str, current_doctor: Doctor = Depends(get_curren
     """
     Enforces Object-Level Authorization (BOLA/IDOR protection per OWASP API1:2023).
     Restricts access to the assigned physician unless Chief Surgeon or Administrator.
-    Demo/phantom cases are universally accessible for rehearsal and training.
+    Demo/phantom cases are universally accessible for rehearsal and training if registered.
     """
-    try:
-        meta = load_case_meta(case_id)
-    except HTTPException:
-        # Allow mock test and demo identifiers in development/testing harness
-        if case_id.lower().startswith(("demo", "test", "phantom")) or case_id == "test_case":
-            return {
-                "case_id": case_id,
-                "is_demo": True,
-                "state": "READY",
-                "owner_doctor_id": getattr(current_doctor, "doctor_id", "DOC_ELENA_CHEN")
-            }
-        raise
+    meta = load_case_meta(case_id)
 
     if meta.get("is_demo", False):
         return meta

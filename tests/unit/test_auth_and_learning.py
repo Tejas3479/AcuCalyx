@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.api.main import app
 from app.api.auth import hash_password, verify_password, create_access_token, verify_access_token
-from src.acucalyx.ai.federated_learning import TrajectoryScoringModel, DifferentialPrivacyEngine, DifferentialPrivacyConfig
+from acucalyx.ai.federated_learning import TrajectoryScoringModel, DifferentialPrivacyEngine, DifferentialPrivacyConfig
 import numpy as np
 
 client = TestClient(app)

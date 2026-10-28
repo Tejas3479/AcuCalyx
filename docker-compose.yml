@@ -16,9 +16,7 @@ services:
       - ACUCALYX_DEID_SECRET=${ACUCALYX_DEID_SECRET:?Production Error: ACUCALYX_DEID_SECRET must be set with openssl rand -hex 32}
       - ACUCALYX_LOG_LEVEL=INFO
     volumes:
-      - ./data/cases:/app/data/cases
-      - ./data/doctors.json:/app/data/doctors.json
-      - ./data/usability_sessions:/app/data/usability_sessions
+      - ./data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s

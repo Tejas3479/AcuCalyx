@@ -29,14 +29,7 @@ export class Sidebar {
       if (modal) modal.style.display = 'flex';
     });
 
-    // Wire sidebar collapse toggle trigger
-    document.getElementById('btn-toggle-clinical-sidebar')?.addEventListener('click', () => {
-      if (window.layoutManager) {
-        window.layoutManager.toggleSidebar('clinical-sidebar');
-      } else {
-        this.container?.classList.toggle('collapsed');
-      }
-    });
+    // Note: #btn-toggle-clinical-sidebar is handled authoritatively by layout-manager.js
   }
 
   renderDoctor(doctor) {

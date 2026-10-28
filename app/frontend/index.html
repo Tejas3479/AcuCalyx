@@ -437,10 +437,10 @@
         <div class="layer-row">
           <label class="layer-label">
             <input type="checkbox" id="layer-kidney" checked>
-            <span class="color-dot" style="background-color: #be505f;"></span>
+            <span class="color-dot" style="background-color: #9b2c2c;"></span>
             Renal Cortex (Cutaway)
           </label>
-          <input type="range" id="opacity-kidney" min="0" max="1" step="0.05" value="0.35" style="width: 70px;">
+          <input type="range" id="opacity-kidney" min="0" max="1" step="0.05" value="0.45" style="width: 70px;">
         </div>
 
         <div class="layer-row">
@@ -449,7 +449,7 @@
             <span class="color-dot" style="background-color: #78281f;"></span>
             Renal Capsule (Covering)
           </label>
-          <input type="range" id="opacity-capsule" min="0" max="1" step="0.05" value="0.65" style="width: 70px;">
+          <input type="range" id="opacity-capsule" min="0" max="1" step="0.05" value="0.20" style="width: 70px;">
         </div>
 
         <div class="layer-row">
@@ -464,7 +464,7 @@
         <div class="layer-row">
           <label class="layer-label">
             <input type="checkbox" id="layer-collecting" checked>
-            <span class="color-dot" style="background-color: #d6bc97;"></span>
+            <span class="color-dot" style="background-color: #93c5fd;"></span>
             Calyces & Pelvis
           </label>
           <input type="range" id="opacity-collecting" min="0" max="1" step="0.05" value="0.90" style="width: 70px;">
@@ -499,7 +499,7 @@
 
         <div class="layer-row">
           <label class="layer-label">
-            <input type="checkbox" id="layer-nephrons" checked>
+            <input type="checkbox" id="layer-nephrons">
             <span class="color-dot" style="background-color: #f59e0b;"></span>
             Nephron Functional Unit
           </label>
@@ -541,11 +541,11 @@
           <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#ef4444;"></span> Renal Arteries (Oxygenated)</div>
           <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#2563eb;"></span> Renal Veins (Deoxygenated)</div>
           <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#facc15;"></span> Renal Nerves (Sympathetic)</div>
-          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#d6bc97;"></span> Calyces & Pelvis (Mucosal Cream)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#93c5fd;"></span> Calyces & Pelvis (Mucosal Opal)</div>
           <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#f59e0b;"></span> Nephron Functional Unit</div>
-          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#c47e85;"></span> Renal Cortex / Columns</div>
-          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#881337;"></span> Medullary Pyramids</div>
-          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#6e241c;"></span> Renal Capsule (Outer)</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#9b2c2c;"></span> Renal Cortex / Columns</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#781d22;"></span> Medullary Pyramids</div>
+          <div style="display:flex; align-items:center; gap:8px;"><span class="color-dot" style="background:#c89f82;"></span> Renal Capsule (Outer Sheath)</div>
           <div style="display:flex; align-items:center; gap:8px; background: rgba(251, 191, 36, 0.15); border: 1px solid #f59e0b; border-radius: 4px; padding: 4px 6px; margin-top: 2px;">
             <span class="color-dot" style="background:#ffffff; border: 1px solid #fbbf24; box-shadow: 0 0 8px #f59e0b;"></span>
             <strong style="color: #fbbf24;">Target Calculus (Faceted Ivory & Gold)</strong>
@@ -578,16 +578,198 @@
       <!-- 3D Viewport (Full Center Stage) -->
       <div id="three-container" class="three-viewport">
         <!-- Floating Camera & Anatomical Tools Toolbar -->
-        <div class="viewport-overlay-tools">
-          <button class="tool-btn" onclick="viewer3d.setCameraView('posterior')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span>Coronal En-Face (PCNL)</span></button>
-          <button class="tool-btn" onclick="viewer3d.setCameraView('lateral')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M2 22l14-14"/><path d="M2 8v14"/></svg> <span>Lateral Profile</span></button>
-          <button class="tool-btn" onclick="viewer3d.setCameraView('bullseye')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg> <span>Bull's-eye</span></button>
-          <button class="tool-btn" onclick="viewer3d.setCameraView('progression')"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg> <span>Progression</span></button>
-          <button class="tool-btn" onclick="openNephronMagnifier()" style="color: #38bdf8; border-color: rgba(56,189,248,0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/></svg> <span>Micro-Nephron 3D</span></button>
-          <button class="tool-btn" onclick="viewer3d.focusOnStone()" style="color: #fbbf24; border-color: rgba(245,158,11,0.5); font-weight: 700;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 18 3 22 9 12 22 2 9 6 3"/></svg> <span>Focus Stone</span></button>
-          <button class="tool-btn" id="btn-toggle-mpr" onclick="toggleMPRView()" style="color: #a78bfa; border-color: rgba(167,139,250,0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg> <span>2D CT Slice</span></button>
-          <button class="tool-btn" id="btn-toggle-both-sidebars" title="Toggle Fullscreen 3D Stage (Hide/Show Both Sidebars)" style="color: var(--accent-cyan); border-color: rgba(2, 132, 199, 0.4);"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg> <span>Fullscreen 3D</span></button>
+        <div class="viewport-overlay-tools" style="position: absolute; top: 10px; left: 12px; z-index: 30; display: flex; align-items: center; gap: 6px; background: rgba(10, 15, 26, 0.85); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px; padding: 5px 8px; box-shadow: 0 6px 25px rgba(0, 0, 0, 0.45); flex-wrap: nowrap;">
+          
+          <!-- Camera Views Dropdown -->
+          <div class="viewport-dropdown" id="dropdown-camera-views">
+            <button class="tool-btn dropdown-trigger" onclick="toggleCameraDropdown(event)" title="Select Standard Anatomical & Surgical Camera Angles" style="display: flex; align-items: center; gap: 6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+              <span id="current-camera-view-label">Coronal En-Face</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="viewport-dropdown-menu" id="menu-camera-views" style="display: none;">
+              <button class="dropdown-item active" onclick="selectCameraPreset('posterior', 'Coronal En-Face')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                <span>Coronal En-Face (PCNL Approach)</span>
+              </button>
+              <button class="dropdown-item" onclick="selectCameraPreset('lateral', 'Lateral Profile')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 22h20"/><path d="M2 22l14-14"/><path d="M2 8v14"/></svg>
+                <span>Lateral Profile (Avascular Plane)</span>
+              </button>
+              <button class="dropdown-item" onclick="selectCameraPreset('bullseye', 'Bull's-eye')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                <span>Bull's-eye (Puncture Trocar Axis)</span>
+              </button>
+              <button class="dropdown-item" onclick="selectCameraPreset('progression', 'Progression')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="2" y1="12" x2="22" y2="12"/><line x1="6" y1="8" x2="6" y2="16"/><line x1="12" y1="6" x2="12" y2="18"/><line x1="18" y1="8" x2="18" y2="16"/></svg>
+                <span>Progression (Lateral-to-Medial)</span>
+              </button>
+              <div class="dropdown-divider"></div>
+              <button class="dropdown-item gold" onclick="selectCameraPreset('stone', 'Focus Stone')">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="6 3 18 3 22 9 12 22 2 9 6 3"/></svg>
+                <span>Focus on Target Calculus</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Virtual Scalpel Toggle Button -->
+          <button class="tool-btn" id="btn-toggle-slicing" onclick="toggleSlicingToolbar()" style="color: #ec4899; border-color: rgba(236,72,153,0.4); font-weight: 700;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+            <span>Virtual Scalpel</span>
+          </button>
+
+          <!-- Micro-Nephron 3D -->
+          <button class="tool-btn" onclick="openNephronMagnifier()" style="color: #38bdf8; border-color: rgba(56,189,248,0.4);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 18h8"/><path d="M3 22h18"/><path d="M9 14h2"/><path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"/></svg>
+            <span>Nephron 3D</span>
+          </button>
+
+          <!-- 2D CT Slice (MPR) -->
+          <button class="tool-btn" id="btn-toggle-mpr" onclick="toggleMPRView()" style="color: #a78bfa; border-color: rgba(167,139,250,0.4);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+            <span>2D CT Slice</span>
+          </button>
+
+          <!-- Fullscreen 3D -->
+          <button class="tool-btn" id="btn-toggle-both-sidebars" title="Toggle Fullscreen 3D Stage (Hide/Show Both Sidebars)" style="color: var(--accent-cyan); border-color: rgba(2, 132, 199, 0.4);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+            <span>Fullscreen</span>
+          </button>
         </div>
+
+        <!-- Floating Interactive Virtual Scalpel & Bivalve Nephrotomy Panel (Initially hidden, positioned cleanly BELOW toolbar) -->
+        <div id="slicing-control-bar" class="viewport-slicing-panel" style="display: none; position: absolute; top: 52px; left: 12px; z-index: 25; background: rgba(10, 15, 26, 0.94); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border: 1px solid rgba(236, 72, 153, 0.45); border-radius: 10px; padding: 10px 14px; box-shadow: 0 10px 35px rgba(0, 0, 0, 0.6); flex-direction: column; gap: 8px; font-size: 11px; color: #f1f5f9; width: 440px;">
+          
+          <!-- Row 1: Header, Active Toggle, Mode Pills, Draw Cut Button & Close '✕' Button -->
+          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.08); padding-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; color: #ec4899; font-size: 11.5px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+              <span>Virtual Scalpel</span>
+            </div>
+
+            <!-- Active Checkbox Toggle -->
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; user-select: none;">
+              <input type="checkbox" id="slice-enable-toggle" checked style="accent-color: #ec4899; cursor: pointer; width: 13px; height: 13px;">
+              <span style="font-size: 10px; font-weight: 700; color: #f472b6;">Active</span>
+            </label>
+
+            <!-- Mode Selector: Bivalve vs Cutaway -->
+            <div style="display: flex; background: rgba(0, 0, 0, 0.45); border-radius: 5px; padding: 2px; border: 1px solid rgba(255,255,255,0.12);">
+              <button id="btn-mode-bivalve" class="slice-mode-btn active" onclick="setSlicingMode('bivalve')" title="Part organ halves open with gap">Bivalve</button>
+              <button id="btn-mode-cutaway" class="slice-mode-btn" onclick="setSlicingMode('cutaway')" title="Single-side cross-section dissection">Cutaway</button>
+            </div>
+
+            <!-- Freehand Draw with Finger/Pencil Toggle Button -->
+            <button id="btn-scalpel-draw-mode" class="slice-action-btn draw-btn" onclick="toggleScalpelDrawMode()" title="Draw incision directly across kidney with finger, pencil, or mouse">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/></svg>
+              <span>✏️ Draw Cut</span>
+            </button>
+
+            <!-- Close Panel Button -->
+            <button class="slice-close-btn" onclick="toggleSlicingToolbar(false)" title="Close Scalpel Panel">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Row 2: Surgical Resection Preset Dropdown & Quick Toggles -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 5px; flex: 1;">
+              <span style="font-weight: 600; color: #94a3b8; font-size: 10px; white-space: nowrap;">Preset Plane:</span>
+              <select id="slice-preset-select" class="slice-select" onchange="onSlicePresetSelect(this.value)" style="flex: 1;">
+                <option value="stone" selected>🎯 Through Calculus (Stone Centroid)</option>
+                <option value="brodel">Brödel's Line (30° Posterolateral)</option>
+                <option value="coronal">Coronal En-Face (0° Bivalve)</option>
+                <option value="axial">Axial Transverse (90° Poles)</option>
+                <option value="sagittal">Sagittal (90° Medial-Lateral)</option>
+                <option value="custom">Custom Angle</option>
+              </select>
+            </div>
+
+            <div style="display: flex; gap: 4px; align-items: center;">
+              <!-- Flip Direction -->
+              <button id="btn-slice-invert" class="slice-mini-btn" onclick="toggleSliceInvert()" title="Invert Cutaway Direction">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 16V4M7 4L3 8M7 4L11 8M17 8V20M17 20L21 16M17 20L13 16"/></svg>
+                <span>Flip</span>
+              </button>
+              <!-- 3D Cut Plane Gizmo Toggle -->
+              <label style="display: flex; align-items: center; gap: 3px; cursor: pointer; font-size: 9px; color: #94a3b8;" title="Show 3D holographic resection disc in viewport">
+                <input type="checkbox" id="slice-gizmo-toggle" checked style="accent-color: #00d2ff; cursor: pointer;">
+                <span>3D Disc</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Row 3: Parting Separation Gap (Surgical Bivalve Opening) -->
+          <div id="row-parting-gap" style="display: flex; align-items: center; justify-content: space-between; gap: 6px; background: rgba(236,72,153,0.08); padding: 4px 8px; border-radius: 6px; border: 1px solid rgba(236,72,153,0.2);">
+            <div style="display: flex; align-items: center; gap: 3px;">
+              <span style="font-weight: 700; color: #f472b6; font-size: 10px;">Parting Gap:</span>
+              <button class="slice-mini-btn" onclick="setPartingSeparation(0)" title="Close kidney halves">Close</button>
+              <button class="slice-mini-btn" onclick="setPartingSeparation(15)">15mm</button>
+              <button class="slice-mini-btn highlight" onclick="setPartingSeparation(25)">25mm</button>
+              <button class="slice-mini-btn" onclick="setPartingSeparation(40)">40mm</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <input type="range" id="slice-separation-slider" min="0" max="50" step="1" value="25" style="width: 80px; accent-color: #ec4899; cursor: pointer;">
+              <span id="slice-separation-val" style="min-width: 38px; font-family: monospace; font-weight: 700; color: #f472b6; font-size: 10.5px;">25 mm</span>
+            </div>
+          </div>
+
+          <!-- Row 4: Incision Yaw & Tilt Rotations with Precision Arrows & Sliders -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <!-- Yaw (Azimuth 0 - 360°) -->
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+                <span style="font-weight: 600;">Yaw (Azimuth):</span>
+                <span id="slice-yaw-val" style="font-family: monospace; font-weight: 700; color: #38bdf8;">0°</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 3px;">
+                <button class="slice-step-btn" onclick="stepSliceYaw(-15)" title="Rotate -15°">↶</button>
+                <button class="slice-step-btn" onclick="stepSliceYaw(-5)" title="Step -5°">◀</button>
+                <input type="range" id="slice-yaw-slider" min="0" max="360" step="1" value="0" style="flex: 1; accent-color: #38bdf8; cursor: pointer;">
+                <button class="slice-step-btn" onclick="stepSliceYaw(5)" title="Step +5°">▶</button>
+                <button class="slice-step-btn" onclick="stepSliceYaw(15)" title="Rotate +15°">↷</button>
+              </div>
+            </div>
+
+            <!-- Pitch (Tilt -90° to +90°) -->
+            <div style="display: flex; flex-direction: column; gap: 2px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; color: #94a3b8;">
+                <span style="font-weight: 600;">Tilt (Pitch):</span>
+                <span id="slice-pitch-val" style="font-family: monospace; font-weight: 700; color: #00e5a3;">0°</span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 3px;">
+                <button class="slice-step-btn" onclick="stepSlicePitch(-10)" title="Tilt Down -10°">▼</button>
+                <input type="range" id="slice-pitch-slider" min="-90" max="90" step="1" value="0" style="flex: 1; accent-color: #00e5a3; cursor: pointer;">
+                <button class="slice-step-btn" onclick="stepSlicePitch(10)" title="Tilt Up +10°">▲</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Row 5: Depth Offset Slider -->
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 6px;">
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <span style="font-weight: 600; color: #94a3b8; font-size: 10px;">Depth Offset:</span>
+              <button class="slice-mini-btn" onclick="setSliceOffset(0)" title="Center on organ">Center</button>
+            </div>
+            <div style="display: flex; align-items: center; gap: 5px; flex: 1; justify-content: flex-end;">
+              <input type="range" id="slice-depth-slider" min="-50" max="50" step="1" value="0" style="width: 120px; accent-color: #ec4899; cursor: pointer;">
+              <span id="slice-depth-val" style="min-width: 40px; font-family: monospace; font-weight: 700; color: #f472b6; font-size: 10px;">+0 mm</span>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Canvas for Finger / Pencil / Stylus Scalpel Freehand Drawing -->
+        <canvas id="scalpel-draw-overlay" style="display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 18; cursor: crosshair;"></canvas>
+
+        <!-- Floating HUD Guide Badge for Scalpel Drawing -->
+        <div id="scalpel-hud-guide" style="display: none; position: absolute; top: 12px; left: 50%; transform: translateX(-50%); z-index: 26; background: rgba(10, 15, 26, 0.94); border: 1.5px solid #00d2ff; border-radius: 20px; padding: 6px 18px; font-size: 11px; font-weight: 700; color: #00d2ff; box-shadow: 0 4px 25px rgba(0, 210, 255, 0.45); pointer-events: none; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);">
+          ✏️ Draw cut line across kidney with finger, stylus, or mouse
+        </div>
+
+        
+
+        
 
         <!-- Bottom-Left Anatomical Orientation Indicator -->
         <div style="position: absolute; bottom: 14px; left: 14px; z-index: 20; background: rgba(10, 15, 26, 0.88); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); border: 1px solid rgba(255,255,255,0.15); border-radius: 6px; padding: 6px 12px; pointer-events: none; font-size: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
@@ -2580,9 +2762,7 @@
     </div>
   </div>
 
-  <!-- Scripts -->
-  <script src="viewer.js?v=20261002_05"></script>
-  <script src="mpr.js?v=20261002_05"></script>
+  <!-- Scripts: Viewport 3D and MPR are modularly loaded as canonical ES modules via src/main.js -->
   <script src="layout-manager.js?v=20261022_01"></script>
 
   <script src="clinical-cockpit.js?v=20261021_02"></script>

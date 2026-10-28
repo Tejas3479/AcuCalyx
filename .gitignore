@@ -35,3 +35,5 @@ data/usability_sessions/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
 !data/outputs/.gitkeep
+
+data/revoked_tokens.json

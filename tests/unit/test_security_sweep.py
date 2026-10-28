@@ -209,3 +209,130 @@ def test_readiness_probe():
     assert data["status"] == "ready"
     assert data["checks"]["cases_directory"] is True
     assert data["checks"]["data_directory"] is True
+
+
+def test_doctor_id_collision_takeover_prevention():
+    """
+    Vulnerability Fix (Item 1): Registering a username that normalizes to an existing
+    physician (e.g. 'Elena_Chen' or 'elena_chen' vs 'elena.chen') must return 409 Conflict
+    and strictly prevent account overwrite/takeover.
+    """
+    client = TestClient(app)
+    # Attempt registering collision username
+    res = client.post(
+        "/api/auth/register",
+        json={
+            "username": "elena_chen",
+            "password": "NewAttackerPassword2026!",
+            "full_name": "Attacker Elena",
+            "email": "attacker.elena@fake.org",
+            "role": "ATTENDING_SURGEON"
+        }
+    )
+    assert res.status_code == 409, f"Expected 409 Conflict on normalized username collision, got {res.status_code}"
+    assert "already in use" in res.json().get("detail", "").lower()
+
+    # Verify original Dr. Elena Chen credentials remain intact
+    res_login = client.post("/api/auth/login", json={"username": "elena.chen", "password": "password123"})
+    assert res_login.status_code == 200, "Original Dr. Elena Chen account was overwritten!"
+
+
+def test_lockout_ip_isolation_dos_protection():
+    """
+    Vulnerability Fix (Item 8): Rate-limit lockouts are composite-keyed by IP + username.
+    Failed attempts from an attacker IP must not lock out the legitimate clinician from their IP.
+    """
+    client = TestClient(app)
+    # Attacker from 198.51.100.5 spams 5 failed logins for elena.chen
+    for _ in range(5):
+        client.post(
+            "/api/auth/login",
+            headers={"x-forwarded-for": "198.51.100.5"},
+            json={"username": "elena.chen", "password": "WrongPassword123!"}
+        )
+
+    # Legitimate clinician from hospital IP 10.0.1.20 logs in with correct credentials
+    res_clinician = client.post(
+        "/api/auth/login",
+        headers={"x-forwarded-for": "10.0.1.20"},
+        json={"username": "elena.chen", "password": "password123"}
+    )
+    assert res_clinician.status_code == 200, f"Legitimate clinician was locked out by remote IP attack! Status: {res_clinician.status_code}"
+
+
+def test_concurrent_audit_log_thread_safety():
+    """
+    Vulnerability Fix (Item 15): Concurrent audit log writes must not race, overwrite entries,
+    or corrupt the SHA-256 cryptographic tamper-evident hash chain.
+    """
+    import concurrent.futures
+    case_id = "AUDIT_CONCURRENT_THREAD_TEST_001"
+    case_dir = CASES_DIR / case_id
+    case_dir.mkdir(parents=True, exist_ok=True)
+    audit_file = case_dir / "audit_trail.json"
+    audit_file.unlink(missing_ok=True)
+
+    try:
+        def write_event(idx: int):
+            log_case_audit_event(
+                case_id,
+                f"CONCURRENT_ACTION_{idx}",
+                {"worker_index": idx, "payload": f"data_{idx}"},
+                user=f"Doctor_{idx}"
+            )
+
+        # Execute 12 concurrent audit writes across a thread pool
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+            futures = [executor.submit(write_event, i) for i in range(12)]
+            concurrent.futures.wait(futures)
+
+        with open(audit_file, "r", encoding="utf-8") as f:
+            events = json.load(f)
+
+        assert len(events) == 12, f"Expected 12 audit events, got {len(events)} (race condition data loss!)"
+
+        # Verify hash chain continuity
+        for i in range(len(events)):
+            if i == 0:
+                assert events[i]["prev_hash"] == "0000000000000000000000000000000000000000000000000000000000000000"
+            else:
+                assert events[i]["prev_hash"] == events[i - 1]["entry_hash"], f"Broken hash chain at index {i}"
+    finally:
+        import shutil
+        shutil.rmtree(case_dir, ignore_errors=True)
+
+
+def test_rehearsal_and_verbal_card_strict_case_access():
+    """
+    Vulnerability Fix (Item 5): Rehearsal transfer-card, state, depth-check, and verbal-card
+    must strictly enforce verify_case_access across doctor boundaries.
+    """
+    client = TestClient(app)
+
+    # Login as Dr. Marcus Ramirez and create his private case
+    res_m = client.post("/api/auth/login", json={"username": "marcus.ramirez", "password": "password123"})
+    token_m = res_m.json()["access_token"]
+    headers_m = {"Authorization": f"Bearer {token_m}"}
+
+    res_case = client.post("/api/cases/demo", headers=headers_m)
+    case_id = res_case.json()["case_id"]
+
+    meta = load_case_meta(case_id)
+    meta["is_demo"] = False
+    meta["owner_doctor_id"] = "DOC_MARCUS_RAMIREZ"
+    save_case_meta(case_id, meta)
+
+    # Sarah Jenkins (Fellow) attempts access to Marcus's private rehearsal endpoints
+    res_s = client.post("/api/auth/login", json={"username": "sarah.jenkins", "password": "password123"})
+    token_s = res_s.json()["access_token"]
+    headers_s = {"Authorization": f"Bearer {token_s}"}
+
+    # Sarah must get 403 Forbidden
+    res_card = client.get(f"/api/cases/{case_id}/rehearsal/transfer-card", headers=headers_s)
+    assert res_card.status_code == 403
+
+    res_state = client.get(f"/api/cases/{case_id}/rehearsal/state", headers=headers_s)
+    assert res_state.status_code == 403
+
+    res_verbal = client.get(f"/api/usability/cases/{case_id}/verbal-card", headers=headers_s)
+    assert res_verbal.status_code == 403

@@ -657,33 +657,33 @@ def generate_synthetic_m15v_test_data() -> Dict[str, Any]:
     and simulated bench measurements for unit testing statistical agreement calculators.
     NOT accessible or used by production validation routes.
     """
-    np.random.seed(42)
+    rng42 = np.random.default_rng(42)
     ipa_ref = np.array([
         72.0, 68.0, 74.0, 65.0, 52.0, 48.0, 50.0, 44.0, 28.0, 42.0,
         25.0, 32.0, 60.0, 55.0, 40.0, 35.0, 78.0, 82.0, 31.0, 46.0,
         58.0, 64.0, 49.0, 38.0, 70.0, 75.0, 29.0, 43.0, 53.0, 62.0
     ])
-    noise = np.random.normal(0.0, 2.5, len(ipa_ref))
+    noise = rng42.normal(0.0, 2.5, len(ipa_ref))
     ipa_pred = ipa_ref + noise
 
-    np.random.seed(43)
+    rng43 = np.random.default_rng(43)
     iw_ref = np.array([
         7.5, 6.8, 6.2, 5.8, 5.2, 4.8, 4.5, 4.2, 3.2, 4.0,
         3.8, 4.2, 5.5, 6.0, 4.8, 3.9, 8.0, 8.5, 3.4, 4.7,
         5.8, 6.5, 5.0, 4.1, 7.2, 7.8, 3.1, 4.4, 5.3, 6.4
     ])
-    noise_iw = np.random.normal(0.0, 0.35, len(iw_ref))
+    noise_iw = rng43.normal(0.0, 0.35, len(iw_ref))
     iw_pred = np.maximum(2.0, iw_ref + noise_iw)
 
     class_ref = (ipa_ref >= 35.0) & (iw_ref >= 4.0)
     class_pred = class_ref.copy()
     class_pred[8] = False
 
-    np.random.seed(44)
+    rng44 = np.random.default_rng(44)
     base = ipa_ref
-    rater1 = base + np.random.normal(0.0, 2.0, len(base))
-    rater2 = base + np.random.normal(0.2, 2.2, len(base))
-    rater3 = base + np.random.normal(-0.1, 2.1, len(base))
+    rater1 = base + rng44.normal(0.0, 2.0, len(base))
+    rater2 = base + rng44.normal(0.2, 2.2, len(base))
+    rater3 = base + rng44.normal(-0.1, 2.1, len(base))
     multi_expert_ratings = np.column_stack([rater1, rater2, rater3])
 
     # Empirical phantom measurements for all M15 reference phantoms

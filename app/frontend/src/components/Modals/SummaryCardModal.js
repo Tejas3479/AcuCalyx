@@ -68,20 +68,46 @@ export class SummaryCardModal {
       elSagittal.textContent = (typeof ang === 'number' ? ang.toFixed(1) : ang) + '°';
     }
 
-    // Populate stone burden profile and C-Arm projections
+    // Populate stone burden profile and C-Arm projections from structured API data
     const stoneVol = document.getElementById('card-stone-volume');
-    if (stoneVol) stoneVol.textContent = document.getElementById('info-stone-vol')?.textContent || '-- mm³';
     const stoneFeret = document.getElementById('card-stone-feret');
-    if (stoneFeret) stoneFeret.textContent = document.getElementById('info-stone-feret')?.textContent || '-- mm';
     const stoneHu = document.getElementById('card-stone-hu');
-    if (stoneHu) stoneHu.textContent = document.getElementById('info-stone-hu')?.textContent || '-- HU';
     const guysGrade = document.getElementById('card-guys-grade');
-    if (guysGrade) guysGrade.textContent = document.getElementById('info-guys-grade')?.textContent || 'GRADE I';
 
+    // 1. Initial DOM fallback if populated
+    const domVol = document.getElementById('info-stone-vol')?.textContent;
+    const domFeret = document.getElementById('info-stone-feret')?.textContent;
+    const domHu = document.getElementById('info-stone-hu')?.textContent;
+    const domGrade = document.getElementById('info-guys-grade')?.textContent;
+
+    if (stoneVol) stoneVol.textContent = (domVol && domVol !== '-- mm³') ? domVol : '-- mm³';
+    if (stoneFeret) stoneFeret.textContent = (domFeret && domFeret !== '-- mm') ? domFeret : '-- mm';
+    if (stoneHu) stoneHu.textContent = (domHu && domHu !== '-- HU') ? domHu : '-- HU';
+    if (guysGrade) guysGrade.textContent = domGrade || 'GRADE I';
+
+    // 2. Fetch structured stone metrics to guarantee clinical timeout accuracy regardless of active view
+    fetch(`/api/cases/${caseId}/stones`)
+      .then(res => res.ok ? res.json() : null)
+      .then(stones => {
+        if (stones && stones.length > 0) {
+          const primary = stones[0];
+          if (stoneVol && primary.volume_mm3 != null) stoneVol.textContent = `${primary.volume_mm3.toFixed(1)} mm³`;
+          if (stoneFeret && primary.max_feret_diameter_mm != null) stoneFeret.textContent = `${primary.max_feret_diameter_mm.toFixed(1)} mm`;
+          if (stoneHu && primary.mean_hu != null) stoneHu.textContent = `${Math.round(primary.mean_hu)} HU`;
+        }
+      })
+      .catch(() => {});
+
+    // C-Arm projections derived from candidate or fluoroscopy calculations
     const carmBe = document.getElementById('card-carm-be');
-    if (carmBe) carmBe.textContent = document.getElementById('vp-be-angles')?.textContent || 'LAO 18.0° CAUD 12.0°';
     const carmDv = document.getElementById('card-carm-dv');
-    if (carmDv) carmDv.textContent = document.getElementById('vp-dv-angles')?.textContent || 'RAO 12.0° CAUD 12.0°';
+    const primAng = activeCand.puncture_angle_coronal_deg ?? activeCand.carm_primary_angle_deg ?? 18.0;
+    const secAng = activeCand.puncture_angle_sagittal_deg ?? activeCand.carm_secondary_angle_deg ?? 12.0;
+    const beStr = `LAO ${Math.abs(primAng).toFixed(1)}° CAUD ${Math.abs(secAng).toFixed(1)}°`;
+    const dvStr = `RAO ${(Math.abs(primAng) + 30.0).toFixed(1)}° CAUD ${Math.abs(secAng).toFixed(1)}°`;
+
+    if (carmBe) carmBe.textContent = activeCand.carm_bullseye_display || document.getElementById('vp-be-angles')?.textContent || beStr;
+    if (carmDv) carmDv.textContent = activeCand.carm_dv_display || document.getElementById('vp-dv-angles')?.textContent || dvStr;
 
     // Populate Keyframe Previews using authenticated fetch
     const axialImg = document.getElementById('card-axial-img');

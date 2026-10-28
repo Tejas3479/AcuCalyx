@@ -880,7 +880,10 @@ def clinician_override(case_id: str, req: ManualOverrideRequest, meta: Dict[str,
 
 
 @app.get("/api/cases/{case_id}/candidates/comparison-matrix", response_model=CandidateComparisonMatrixResponse)
-def get_candidate_comparison_matrix(case_id: str):
+def get_candidate_comparison_matrix(
+    case_id: str,
+    case_access: Dict[str, Any] = Depends(verify_case_access)
+):
     """
     Returns the comprehensive side-by-side Candidate Access Tract Comparison Matrix
     powering the AcuCalyx PCNL Access Planning Workbench.
@@ -1123,7 +1126,9 @@ def get_case_mesh(
 
 
 @app.get("/api/export/combined-kidney-glb")
-def export_combined_kidney_glb():
+def export_combined_kidney_glb(
+    current_doctor: Doctor = Depends(get_current_doctor)
+):
     """Direct export of the unified 3D anatomical kidney model for Windows 3D Viewer and desktop tools."""
     glb_path = BASE_DIR / "data" / "anatomical_preview" / "combined_anatomical_kidney.glb"
     if not glb_path.is_file():
@@ -1261,7 +1266,8 @@ def convert_lps_to_mpr_slice(
     case_id: str,
     x: float = Query(..., description="Physical LPS X coordinate in mm"),
     y: float = Query(..., description="Physical LPS Y coordinate in mm"),
-    z: float = Query(..., description="Physical LPS Z coordinate in mm")
+    z: float = Query(..., description="Physical LPS Z coordinate in mm"),
+    case_access: Dict[str, Any] = Depends(verify_case_access)
 ):
     """
     Milestone M11: Bidirectional 3D <-> 2D Coordinate Synchronization.

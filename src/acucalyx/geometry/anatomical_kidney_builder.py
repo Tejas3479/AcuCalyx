@@ -136,11 +136,13 @@ class AnatomicalKidneyBuilder:
 
         capsule_mask = (dist_outer <= 1.0) & (dist_inner >= 0.88) & ~hilum_aperture
 
-        verts, faces, normals, _ = marching_cubes(capsule_mask, level=0.5, spacing=(res, res, res))
+        # Pad mask by 1 voxel to guarantee closed watertight envelope
+        padded_capsule = np.pad(capsule_mask, 1, mode='constant', constant_values=0)
+        verts, faces, normals, _ = marching_cubes(padded_capsule, level=0.5, spacing=(res, res, res))
         phys_verts = np.zeros_like(verts)
-        phys_verts[:, 0] = x_range[0] + verts[:, 0]
-        phys_verts[:, 1] = y_range[0] + verts[:, 1]
-        phys_verts[:, 2] = z_range[0] + verts[:, 2]
+        phys_verts[:, 0] = x_range[0] + (verts[:, 0] - 1.0) * res
+        phys_verts[:, 1] = y_range[0] + (verts[:, 1] - 1.0) * res
+        phys_verts[:, 2] = z_range[0] + (verts[:, 2] - 1.0) * res
 
         # Correct clockwise winding to standard counter-clockwise outward normals
         faces_ccw = faces[:, ::-1] if len(faces) > 0 else faces
@@ -160,7 +162,7 @@ class AnatomicalKidneyBuilder:
         mesh.visual.vertex_colors = np.full((len(mesh.vertices), 4), color, dtype=np.uint8)
         return mesh
 
-    def build_kidney_cortex(self, cutaway: bool = True) -> trimesh.Trimesh:
+    def build_kidney_cortex(self, cutaway: bool = False) -> trimesh.Trimesh:
         """
         Builds the granular pinkish-tan renal cortex with renal columns of Bertin dipping between pyramids.
         """
@@ -190,11 +192,13 @@ class AnatomicalKidneyBuilder:
         if cutaway:
             cortex_mask = cortex_mask & (dy >= -1.0)
 
-        verts, faces, normals, _ = marching_cubes(cortex_mask, level=0.5, spacing=(res, res, res))
+        # Pad mask by 1 voxel to ensure closed watertight manifold
+        padded_cortex = np.pad(cortex_mask, 1, mode='constant', constant_values=0)
+        verts, faces, normals, _ = marching_cubes(padded_cortex, level=0.5, spacing=(res, res, res))
         phys_verts = np.zeros_like(verts)
-        phys_verts[:, 0] = x_range[0] + verts[:, 0]
-        phys_verts[:, 1] = y_range[0] + verts[:, 1]
-        phys_verts[:, 2] = z_range[0] + verts[:, 2]
+        phys_verts[:, 0] = x_range[0] + (verts[:, 0] - 1.0) * res
+        phys_verts[:, 1] = y_range[0] + (verts[:, 1] - 1.0) * res
+        phys_verts[:, 2] = z_range[0] + (verts[:, 2] - 1.0) * res
 
         faces_ccw = faces[:, ::-1] if len(faces) > 0 else faces
         normals_outward = -normals if len(normals) > 0 else normals
@@ -218,17 +222,17 @@ class AnatomicalKidneyBuilder:
         """
         pyramid_specs = [
             # (apex_papilla, base_corticomedullary, apex_radius, base_radius)
-            # Superior pole (2)
-            (self.center + np.array([5.0, 4.0, 26.0]), self.center + np.array([13.0, 5.0, 38.0]), 2.2, 7.5),
-            (self.center + np.array([2.0, 2.0, 23.0]), self.center + np.array([8.0, 3.0, 34.0]), 2.0, 7.0),
+            # Superior pole (2) - strictly within corticomedullary junction
+            (self.center + np.array([3.0, 3.0, 22.0]), self.center + np.array([6.5, 3.5, 30.0]), 1.8, 3.8),
+            (self.center + np.array([1.5, 1.5, 19.0]), self.center + np.array([4.5, 2.0, 27.0]), 1.8, 3.6),
             # Mid-kidney (3)
-            (self.center + np.array([6.0, 4.0, 11.0]), self.center + np.array([16.0, 5.0, 13.0]), 2.3, 8.0),
-            (self.center + np.array([5.0, 3.0, 0.0]), self.center + np.array([17.0, 4.0, 0.0]), 2.5, 8.5),
-            (self.center + np.array([6.0, 4.0, -11.0]), self.center + np.array([16.0, 5.0, -13.0]), 2.3, 8.0),
+            (self.center + np.array([5.0, 3.0, 9.0]), self.center + np.array([11.0, 3.5, 11.0]), 1.9, 4.0),
+            (self.center + np.array([4.5, 2.0, 0.0]), self.center + np.array([12.5, 2.5, 0.0]), 2.0, 4.2),
+            (self.center + np.array([5.0, 3.0, -9.0]), self.center + np.array([11.0, 3.5, -11.0]), 1.9, 4.0),
             # Inferior pole (3)
-            (self.center + np.array([2.0, 4.0, -13.0]), self.center + np.array([10.0, 6.0, -19.0]), 2.4, 7.8),
-            (self.center + np.array([4.0, 3.0, -21.0]), self.center + np.array([12.0, 4.0, -29.0]), 2.3, 7.5),
-            (self.center + np.array([2.0, 4.0, -23.0]), self.center + np.array([7.0, 5.0, -33.0]), 2.1, 7.0),
+            (self.center + np.array([2.0, 3.0, -11.0]), self.center + np.array([6.5, 4.0, -16.0]), 1.9, 3.8),
+            (self.center + np.array([3.5, 2.5, -17.0]), self.center + np.array([7.5, 3.0, -23.0]), 1.9, 3.8),
+            (self.center + np.array([1.5, 3.0, -19.0]), self.center + np.array([4.0, 3.5, -25.0]), 1.8, 3.6),
         ]
 
         meshes = []
@@ -267,15 +271,15 @@ class AnatomicalKidneyBuilder:
 
         # Minor calyces: cup-shaped funnels with defined fornices embracing each renal papilla
         minor_calyces = [
-            (self.center + np.array([2.0, 3.0, 19.0]), self.center + np.array([5.0, 4.0, 26.0]), 3.2, 4.2),
-            (self.center + np.array([2.0, 3.0, 19.0]), self.center + np.array([2.0, 2.0, 23.0]), 3.0, 3.8),
-            (self.center + np.array([3.0, 3.0, 0.0]), self.center + np.array([6.0, 4.0, 11.0]), 3.2, 4.0),
-            (self.center + np.array([3.0, 3.0, 0.0]), self.center + np.array([5.0, 3.0, 0.0]), 3.4, 4.2),
-            (self.center + np.array([3.0, 3.0, 0.0]), self.center + np.array([6.0, 4.0, -11.0]), 3.2, 4.0),
-            # Inferior minor calyx with stone
-            (self.center + np.array([2.0, 4.0, -17.0]), self.center + np.array([2.0, 4.0, -13.0]), 3.8, 5.0),
-            (self.center + np.array([2.0, 4.0, -17.0]), self.center + np.array([4.0, 3.0, -21.0]), 3.4, 4.2),
-            (self.center + np.array([2.0, 4.0, -17.0]), self.center + np.array([2.0, 4.0, -23.0]), 3.2, 4.0),
+            (self.center + np.array([1.5, 2.5, 16.0]), self.center + np.array([3.0, 3.0, 22.0]), 2.8, 3.6),
+            (self.center + np.array([1.0, 1.5, 15.0]), self.center + np.array([1.5, 1.5, 19.0]), 2.8, 3.4),
+            (self.center + np.array([2.5, 2.5, 0.0]), self.center + np.array([5.0, 3.0, 9.0]), 2.8, 3.5),
+            (self.center + np.array([2.5, 2.0, 0.0]), self.center + np.array([4.5, 2.0, 0.0]), 3.0, 3.8),
+            (self.center + np.array([2.5, 2.5, 0.0]), self.center + np.array([5.0, 3.0, -9.0]), 2.8, 3.5),
+            # Inferior minor calyces cupping lower papillae and stone
+            (self.center + np.array([1.5, 3.0, -14.0]), self.center + np.array([2.0, 3.0, -11.0]), 3.0, 3.6),
+            (self.center + np.array([1.5, 2.5, -14.0]), self.center + np.array([3.5, 2.5, -17.0]), 3.0, 3.8),
+            (self.center + np.array([1.0, 2.5, -14.0]), self.center + np.array([1.5, 3.0, -19.0]), 2.8, 3.4),
         ]
         tubes.extend(minor_calyces)
 
@@ -311,7 +315,7 @@ class AnatomicalKidneyBuilder:
             (self.center + np.array([1.0, 2.0, -15.0]), self.center + np.array([5.0, 3.0, -26.0]), 1.2, 1.0),
 
             # Arcuate arches running along pyramid bases (diameter 1.4-1.8mm)
-            (self.center + np.array([7.0, 3.0, 27.0]), self.center + np.array([14.0, 4.0, 32.0]), 0.9, 0.7),
+            (self.center + np.array([7.0, 3.0, 27.0]), self.center + np.array([10.0, 3.0, 29.0]), 0.9, 0.7),
             (self.center + np.array([11.0, 2.0, 7.0]), self.center + np.array([16.0, 3.0, 9.0]), 0.9, 0.7),
             (self.center + np.array([11.0, 2.0, -6.0]), self.center + np.array([16.0, 3.0, -8.0]), 0.9, 0.7),
             (self.center + np.array([6.0, 2.0, -19.0]), self.center + np.array([12.0, 3.0, -23.0]), 0.9, 0.7),
@@ -480,7 +484,6 @@ class AnatomicalKidneyBuilder:
             stone_pos = self.center + np.array([1.5, 3.5, -12.5])
 
         sphere = trimesh.creation.icosphere(subdivisions=4, radius=6.2)
-        np.random.seed(42)
 
         # Coherent 3D multi-frequency harmonics for authentic mineral crystalline facets
         v = sphere.vertices.copy()
@@ -526,7 +529,7 @@ class AnatomicalKidneyBuilder:
         results: Dict[str, Path] = {}
 
         # 1. Cortex Cutaway
-        cortex = self.build_kidney_cortex(cutaway=True)
+        cortex = self.build_kidney_cortex(cutaway=False)
         cortex_path = output_dir / "kidney.glb"
         cortex.export(str(cortex_path), file_type="glb")
         cortex.export(str(output_dir / "kidney.stl"), file_type="stl")
